@@ -1,0 +1,27 @@
+[versions]
+activityKtx = "1.12.4"
+agp = "9.1.0"
+appcompat = "1.7.1"
+constraintlayout = "2.2.1"
+coreKtx = "1.17.0"
+documentfile = "1.1.0"
+gradleToolchainsFoojayResolverConvention = "1.0.0"
+kotlin = "2.3.10"
+material = "1.13.0"
+opencsv = "5.12.0"
+recyclerview = "1.4.0"
+
+[libraries]
+androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
+androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+opencsv = { group = "com.opencsv", name = "opencsv", version.ref = "opencsv" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+foojay = { id = "org.gradle.toolchains.foojay-resolver-convention", version.ref = "gradleToolchainsFoojayResolverConvention" }
+jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
