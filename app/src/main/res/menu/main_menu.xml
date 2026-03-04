@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_change_csv"
+        android:title="📂 Load Asset List (.csv)"
+        android:orderInCategory="1" />
+
+    <item
+        android:id="@+id/menu_bt_connect"
+        android:title="🔵 Connect Bluetooth"
+        android:orderInCategory="3" />
+
+    <item
+        android:id="@+id/menu_bt_disconnect"
+        android:title="⚫ Disconnect Bluetooth"
+        android:orderInCategory="4" />
+
+    <item
+        android:id="@+id/menu_settings"
+        android:title="⚙️ Settings"
+        android:orderInCategory="5" />
+
+    <item
+        android:id="@+id/menu_about"
+        android:title="ℹ️ About"
+        android:orderInCategory="6" />
+
+</menu>

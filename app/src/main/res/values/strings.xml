@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monash CEQA</string>
+    <string name="reloading_saved_csv">Reloading saved asset list file…</string>
+    <string name="loading_csv">Loading asset list file…</string>
+    <string name="csv_loaded_summary">✓ Loaded %1$d assets!</string>
+    <string name="csv_load_failed">✗ Failed to load asset list file!</string>
+    <string name="connecting_to_device">Connecting to %1$s…</string>
+    <string name="output_path">Output: %1$s</string>
+    <string name="terminal_header">[ MONASH CEQA  │  %1$s  │  %2$s ]</string>
+    <string name="records_today_one">1 RECORD TODAY</string>
+    <string name="records_today_many">%1$d RECORDS TODAY</string>
+</resources>
