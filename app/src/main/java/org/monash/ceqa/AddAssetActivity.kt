@@ -3,6 +3,7 @@ package org.monash.ceqa
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputFilter
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.monash.ceqa.databinding.ActivityAddAssetBinding
@@ -35,6 +36,9 @@ class AddAssetActivity : AppCompatActivity() {
         title = "Add New Asset"
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        binding.etDepartment.filters = arrayOf(InputFilter.AllCaps())
+        binding.etSerial.filters = arrayOf(InputFilter.AllCaps())
 
         binding.btnSave.setOnClickListener {
             if (validateFields()) {

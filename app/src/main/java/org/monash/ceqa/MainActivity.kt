@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.InputFilter
 import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
@@ -433,6 +434,8 @@ class MainActivity : AppCompatActivity() {
     // ─── Click listeners ──────────────────────────────────────────────────────
 
     private fun setupClickListeners() {
+        // Upper case for input from soft and hardware keyboard
+        binding.etSearch.filters = arrayOf(InputFilter.AllCaps())
         val triggerSearch = {
             val query = binding.etSearch.text.toString().trim()
             if (query.isEmpty()) {
