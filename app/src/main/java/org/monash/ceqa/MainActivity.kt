@@ -11,18 +11,19 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.text.InputFilter
 import android.util.Log
+import android.text.InputFilter
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.animation.ValueAnimator
+import android.graphics.Color
 import android.view.View
+import android.widget.LinearLayout
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,10 +60,6 @@ class MainActivity : AppCompatActivity() {
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
 
-    /** Holds a reference to the folder path label inside the settings dialog,
-     *  so it can be updated live when the user picks a new folder. */
-    private var activeSettingsFolderLabel: TextView? = null
-
     /** Guards the one-shot silent BT reconnect on process launch so it never
      *  re-triggers when returning from AddAssetActivity or other sub-screens. */
     private var initialReconnectAttempted = false
@@ -89,10 +86,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val PREFS = "asset_scanner_prefs"
-        private const val KEY_FONT_SIZE = "log_font_size"
-        private const val KEY_LAST_DEVICE = "last_bt_device_address"
-        private const val KEY_WAS_CONNECTED = "bt_was_connected_on_pause"
+        private const val PREFS                 = "asset_scanner_prefs"
+        private const val KEY_FONT_SIZE         = "log_font_size"
+        private const val KEY_LAST_DEVICE       = "last_bt_device_address"
+        private const val KEY_WAS_CONNECTED     = "bt_was_connected_on_pause"
+        private const val KEY_SNACKBAR_DURATION = "snackbar_duration"
     }
 
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
@@ -124,20 +122,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Folder picker for custom output location. */
-    private val pickOutputFolderLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            csvManager.saveOutputFolderUri(uri)
-            csvManager.ensureOutputFileReady()
+    /** Launches SettingsActivity; refreshes font size and output path on return. */
+    private val settingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            // Re-read font size in case it changed
+            val newFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_LARGE)
+            scanLogAdapter.fontSizeSp = newFontSize
+            scanLogAdapter.refreshFontSize()
             updateOutputPathLabel()
-            // Live-update the folder label inside the settings dialog if it's open
-            activeSettingsFolderLabel?.text = csvManager.outputFilePath
-            Toast.makeText(this, "Output folder updated", Toast.LENGTH_SHORT).show()
+            updateTerminalHeader()
+            Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -159,7 +155,8 @@ class MainActivity : AppCompatActivity() {
             sendViaBluetooth(assetNumber)
             showSnackbar(
                 "✓ NEW - '$assetNumber' added successfully",
-                android.R.color.holo_green_dark
+                android.R.color.holo_green_dark,
+                prefs.getInt(KEY_SNACKBAR_DURATION, 3000)
             )
         }
         // Always restore focus after returning from Add Asset screen
@@ -348,7 +345,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             R.id.menu_settings -> {
-                showSettingsDialog()
+                settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
                 true
             }
 
@@ -362,61 +359,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ─── Settings dialog ──────────────────────────────────────────────────────
-
-    private fun showSettingsDialog() {
-        val view = layoutInflater.inflate(R.layout.dialog_settings, null)
-
-        // ── Scanner name ──
-        val etScannerName = view.findViewById<EditText>(R.id.etScannerName)
-        etScannerName.setText(csvManager.scannerName)
-        etScannerName.hint = ""
-
-        // ── Output folder ──
-        val tvCurrentFolder = view.findViewById<TextView>(R.id.tvCurrentFolder)
-        val btnChangeFolder = view.findViewById<Button>(R.id.btnChangeFolder)
-        tvCurrentFolder.text = csvManager.outputFilePath
-        activeSettingsFolderLabel = tvCurrentFolder
-        btnChangeFolder.setOnClickListener {
-            pickOutputFolderLauncher.launch(null)
-        }
-
-        // ── Font size radio ──
-        val rgFontSize = view.findViewById<RadioGroup>(R.id.rgFontSize)
-        val rbSmall = view.findViewById<RadioButton>(R.id.rbFontSmall)
-        val rbMedium = view.findViewById<RadioButton>(R.id.rbFontMedium)
-        val rbLarge = view.findViewById<RadioButton>(R.id.rbFontLarge)
-
-        when (scanLogAdapter.fontSizeSp) {
-            ScanLogAdapter.FONT_SIZE_SMALL -> rbSmall.isChecked = true
-            ScanLogAdapter.FONT_SIZE_LARGE -> rbLarge.isChecked = true
-            else -> rbMedium.isChecked = true
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("⚙ Settings")
-            .setView(view)
-            .setPositiveButton("Save") { _, _ ->
-                val newName = etScannerName.text.toString()
-                    .trim().lowercase().replace(" ", "_")
-                csvManager.scannerName = newName
-
-                val newFontSize = when (rgFontSize.checkedRadioButtonId) {
-                    R.id.rbFontSmall -> ScanLogAdapter.FONT_SIZE_SMALL
-                    R.id.rbFontLarge -> ScanLogAdapter.FONT_SIZE_LARGE
-                    else -> ScanLogAdapter.FONT_SIZE_MEDIUM
-                }
-                prefs.edit().putFloat(KEY_FONT_SIZE, newFontSize).apply()
-                scanLogAdapter.fontSizeSp = newFontSize
-                scanLogAdapter.refreshFontSize()
-
-                csvManager.ensureOutputFileReady()
-                updateOutputPathLabel()
-                Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .setOnDismissListener { activeSettingsFolderLabel = null }
-            .show()
-    }
 
     private fun showAboutDialog() {
         val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -434,7 +376,7 @@ class MainActivity : AppCompatActivity() {
     // ─── Click listeners ──────────────────────────────────────────────────────
 
     private fun setupClickListeners() {
-        // Upper case for input from soft and hardware keyboard
+        // Force uppercase for both soft keyboard and hardware scanner input
         binding.etSearch.filters = arrayOf(InputFilter.AllCaps())
         val triggerSearch = {
             val query = binding.etSearch.text.toString().trim()
@@ -507,11 +449,18 @@ class MainActivity : AppCompatActivity() {
         if (lookupMap.isEmpty()) return
         var changed = false
         scanLog.forEachIndexed { index, asset ->
-            if (!asset.isNew && asset.department.isEmpty()) {
+            if (!asset.isNew) {
                 val match = lookupMap[asset.assetNumber.lowercase()]?.firstOrNull()
                 if (match != null) {
-                    scanLog[index] = asset.copy(department = match.department)
-                    changed = true
+                    val needsDept   = asset.department.isEmpty() && match.department.isNotEmpty()
+                    val needsPeriod = asset.routinePeriod == 0 && match.routinePeriod != 0
+                    if (needsDept || needsPeriod) {
+                        scanLog[index] = asset.copy(
+                            department    = if (needsDept) match.department else asset.department,
+                            routinePeriod = if (needsPeriod) match.routinePeriod else asset.routinePeriod
+                        )
+                        changed = true
+                    }
                 }
             }
         }
@@ -590,15 +539,16 @@ class MainActivity : AppCompatActivity() {
     private fun resolveAndSave(record: CsvManager.SourceRecord) {
         sendViaBluetooth(record.assetNumber)
         if (csvManager.isAlreadyLogged(record.assetNumber)) {
-            showFoundBanner(record.assetNumber, alreadyLogged = true)
+            showFoundBanner(record.assetNumber, alreadyLogged = true, routinePeriod = record.routinePeriod)
         } else {
             val asset = Asset(
-                assetNumber = record.assetNumber,
-                department = record.department,
-                isNew = false
+                assetNumber   = record.assetNumber,
+                department    = record.department,
+                isNew         = false,
+                routinePeriod = record.routinePeriod
             )
             saveAsset(asset)
-            showFoundBanner(record.assetNumber, alreadyLogged = false)
+            showFoundBanner(record.assetNumber, alreadyLogged = false, routinePeriod = record.routinePeriod)
         }
     }
 
@@ -728,11 +678,15 @@ class MainActivity : AppCompatActivity() {
                 is BluetoothSppManager.ConnectionResult.Failure -> {
                     updateBtStatusIndicator()
                     setupBtReconnectButton()
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Connection Failed")
-                        .setMessage("${result.error}\n\nMake sure the device is powered on and in range.")
-                        .setPositiveButton("OK", null)
-                        .show()
+                    if (silent) {
+                        Toast.makeText(this@MainActivity, "⚠ Bluetooth connection failed", Toast.LENGTH_SHORT).show()
+                    } else {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Connection Failed")
+                            .setMessage("${result.error}\n\nMake sure the device is powered on and in range.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
                 }
                 // Cancelled -- new attempt started or app closing; stay silent
                 is BluetoothSppManager.ConnectionResult.Cancelled -> {
@@ -746,24 +700,83 @@ class MainActivity : AppCompatActivity() {
     // ─── UI helpers ───────────────────────────────────────────────────────────
 
     /** Shows a snackbar, dismissing any currently visible one first so they never overlap. */
-    private fun showSnackbar(message: String, colorRes: Int, duration: Int = Snackbar.LENGTH_LONG) {
+    /**
+     * Shows a snackbar, dismissing any currently visible one first so they never overlap.
+     * When [duration] is a custom millisecond value (> 10ms), a thin countdown bar is drawn
+     * at the bottom of the snackbar that drains from right to left over the full duration.
+     */
+    private fun showSnackbar(message: CharSequence, colorRes: Int, duration: Int = Snackbar.LENGTH_LONG) {
         activeSnackbar?.dismiss()
         activeSnackbar = Snackbar.make(binding.root, message, duration).apply {
             setBackgroundTint(getColor(colorRes))
             setTextColor(getColor(android.R.color.white))
+
+            // Add countdown bar only for custom ms durations (not LENGTH_SHORT/LONG constants)
+            if (duration > 10) {
+                val snackLayout = view as android.widget.FrameLayout
+                val countdownBar = View(this@MainActivity).apply {
+                    setBackgroundColor(Color.argb(150, 255, 255, 255))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 6
+                    )
+                    pivotX = 0f   // anchor left — bar drains from right to left
+                }
+                snackLayout.addView(countdownBar)
+
+                // Wait for layout pass so the view has a real width before animating
+                countdownBar.post {
+                    val animator = ValueAnimator.ofFloat(1f, 0f).apply {
+                        this.duration = duration.toLong()
+                        interpolator = android.view.animation.LinearInterpolator()
+                        addUpdateListener { countdownBar.scaleX = it.animatedValue as Float }
+                        start()
+                    }
+                    addCallback(object : Snackbar.Callback() {
+                        override fun onDismissed(bar: Snackbar?, event: Int) {
+                            animator.cancel()
+                        }
+                    })
+                }
+            }
+
             show()
         }
     }
 
-    private fun showFoundBanner(assetNumber: String, alreadyLogged: Boolean) {
-        val message = if (alreadyLogged)
+    private fun showFoundBanner(assetNumber: String, alreadyLogged: Boolean, routinePeriod: Int = 0) {
+        val stickerSuffix = when (routinePeriod) {
+            12   -> "\n   [YELLOW STICKER (12mths)]"
+            24   -> "\n   [WHITE STICKER (24mths)]"
+            60   -> "\n   [GREEN STICKER (60mths)]"
+            else -> ""
+        }
+        val stickerColor = when (routinePeriod) {
+            12   -> Color.parseColor("#FDD835")
+            24   -> Color.parseColor("#F5F5F5")
+            60   -> Color.parseColor("#66BB6A")
+            else -> 0
+        }
+        val base = if (alreadyLogged)
             "⚠ FOUND - '$assetNumber' already logged"
         else
             "✓ FOUND - '$assetNumber' logged successfully"
+
+        val message: CharSequence = if (stickerSuffix.isNotEmpty()) {
+            SpannableString(base + stickerSuffix).also { span ->
+                span.setSpan(
+                    ForegroundColorSpan(stickerColor),
+                    base.length, base.length + stickerSuffix.length,
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        } else base
+
+        val duration = prefs.getInt(KEY_SNACKBAR_DURATION, 3000)
         showSnackbar(
             message,
             if (alreadyLogged) android.R.color.holo_orange_dark
-            else android.R.color.holo_green_dark
+            else android.R.color.holo_green_dark,
+            duration
         )
     }
 
@@ -793,7 +806,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateTerminalHeader() {
         val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
         val count = scanLogAdapter.recordCount()
-        val scanner = csvManager.scannerName.ifBlank { "DEFAULT" }.uppercase()
+        csvManager.scannerName.ifBlank { "DEFAULT" }.uppercase()
         val label = if (count == 1) "1 RECORD TODAY" else "$count RECORDS TODAY"
         binding.tvTerminalHeader.text = "[ MONASH CEQA │ $date │ $label ]"
     }

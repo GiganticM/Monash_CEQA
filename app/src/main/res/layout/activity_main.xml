@@ -2,257 +2,251 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:fitsSystemWindows="true">
+    android:orientation="vertical">
 
+    <!-- ── Tab bar ─────────────────────────────────────────────────────── -->
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tabLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorPrimary"
+        android:background="#1976d2"
         app:tabMode="fixed"
         app:tabGravity="fill"
-        app:tabSelectedTextColor="@color/white"
+        app:tabSelectedTextColor="#FFFFFF"
         app:tabTextColor="#B0BEC5"
-        app:tabIndicatorColor="@color/white"
-        app:tabIndicatorHeight="3dp">
+        app:tabIndicatorColor="#FFFFFF"
+        app:tabIndicatorHeight="3dp"
+        app:tabTextAppearance="@android:style/TextAppearance.Widget.TabWidget">
 
         <com.google.android.material.tabs.TabItem
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="SCAN" />
+            android:text="  SCAN  " />
 
         <com.google.android.material.tabs.TabItem
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="LOG" />
+            android:text="  LOG  " />
 
     </com.google.android.material.tabs.TabLayout>
 
-    <FrameLayout
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 1 - Scan                                                      -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/tabContentScan"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="#FFFFFF">
 
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <!-- TAB 1 - Scan                                                      -->
-        <!-- ══════════════════════════════════════════════════════════════════ -->
+        <!-- CSV + BT status rows with RECONNECT button spanning both -->
         <LinearLayout
-            android:id="@+id/tabContentScan"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:background="#FFFFFF">
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
 
-            <!-- CSV + BT status rows with RECONNECT button spanning both -->
+            <!-- Status text column -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="8dp">
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-                <!-- Status text column -->
-                <LinearLayout
-                    android:layout_width="0dp"
+                <TextView
+                    android:id="@+id/tvCsvStatus"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:text="No source CSV loaded - use ⋮ menu to load"
+                    android:textColor="#666666"
+                    android:textSize="13sp" />
 
-                    <TextView
-                        android:id="@+id/tvCsvStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="No source CSV loaded - use ⋮ menu to load"
-                        android:textColor="#666666"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/tvBtStatus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="⚫ Bluetooth: Not connected - use ⋮ menu to connect"
-                        android:textColor="#666666"
-                        android:textSize="13sp"
-                        android:layout_marginTop="4dp" />
-
-                </LinearLayout>
-
-                <!-- RECONNECT button - spans full height of both status rows -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnBtReconnect"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:layout_marginStart="10dp"
-                    android:text="RECONNECT"
-                    android:textSize="11sp"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:minWidth="0dp"
-                    android:visibility="gone" />
+                <TextView
+                    android:id="@+id/tvBtStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="⚫ Bluetooth: Not connected - use ⋮ menu to connect"
+                    android:textColor="#666666"
+                    android:textSize="13sp"
+                    android:layout_marginTop="4dp" />
 
             </LinearLayout>
 
-            <!-- Loading spinner -->
-            <ProgressBar
-                android:id="@+id/progressBar"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:visibility="gone"
-                android:layout_marginTop="4dp" />
-
-            <!-- Divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#E0E0E0"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp" />
-
-            <!-- Search label -->
-            <TextView
-                android:id="@+id/tvSearchLabel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Enter or Scan Asset Number"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="#1A1A2E" />
-
-            <!-- Search input -->
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/tilSearch"
-                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="Asset Number, S/N or Barcode"
-                android:layout_marginTop="12dp">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etSearch"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textCapCharacters"
-                    android:imeOptions="actionSearch"
-                    android:textSize="18sp" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <!-- Search button -->
+            <!-- RECONNECT button - spans full height of both status rows -->
             <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnSearch"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Search"
-                android:textSize="16sp"
-                android:layout_marginTop="12dp"
-                app:backgroundTint="@color/btn_background" />
-
-        </LinearLayout>
-
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <!-- TAB 2 - Scan Log (terminal theme)                                 -->
-        <!-- ══════════════════════════════════════════════════════════════════ -->
-        <LinearLayout
-            android:id="@+id/tabContentLog"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:background="#0B0E0B"
-            android:visibility="gone">
-
-            <!-- Terminal header bar -->
-            <TextView
-                android:id="@+id/tvTerminalHeader"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
+                android:id="@+id/btnBtReconnect"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginStart="10dp"
+                android:text="RECONNECT"
                 android:textSize="11sp"
-                android:textColor="#B9F6CA"
-                android:background="#081008"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:singleLine="true" />
-
-            <!-- Separator -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#1A2A1A" />
-
-            <!-- Column headers -->
-            <TextView
-                android:id="@+id/tvLogColumnHeader"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textSize="11sp"
-                android:textColor="#A5D6A7"
-                android:background="#081008"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:paddingTop="5dp"
-                android:paddingBottom="5dp"
-                android:text="[  TIME  ]   ASSET NUMBER " />
-
-            <!-- Separator -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#1A2A1A" />
-
-            <!-- Scan log entries -->
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvScanLog"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:background="#0B0E0B"
-                android:clipToPadding="false"
-                android:paddingBottom="4dp"
-                android:scrollbars="vertical" />
-
-            <!-- Empty state -->
-            <TextView
-                android:id="@+id/tvLogEmpty"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:fontFamily="monospace"
-                android:textSize="13sp"
-                android:textColor="#A5D6A7"
-                android:gravity="center"
-                android:text="No scans recorded today.\n\nSwitch to the SCAN tab to begin."
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:minWidth="0dp"
                 android:visibility="gone" />
 
-            <!-- Separator above footer -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#1A2A1A" />
+        </LinearLayout>
 
-            <!-- Output file path footer - terminal styled -->
-            <TextView
-                android:id="@+id/tvOutputPath"
+        <!-- Loading spinner -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_marginTop="4dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#E0E0E0"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Search label -->
+        <TextView
+            android:id="@+id/tvSearchLabel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Enter or Scan Asset Number"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#1A1A2E" />
+
+        <!-- Search input -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilSearch"
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Asset Number, S/N or Barcode"
+            android:layout_marginTop="12dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSearch"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textSize="10sp"
-                android:textColor="#B9F6CA"
-                android:background="#081008"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:paddingTop="5dp"
-                android:paddingBottom="5dp"
-                android:singleLine="true"
-                android:ellipsize="start" />
+                android:inputType="textCapCharacters"
+                android:imeOptions="actionSearch"
+                android:textSize="18sp" />
 
-        </LinearLayout>
-    </FrameLayout>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Search button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Search"
+            android:textSize="16sp"
+            android:layout_marginTop="12dp" />
+
+    </LinearLayout>
+
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <!-- TAB 2 - Scan Log (terminal theme)                                 -->
+    <!-- ══════════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/tabContentLog"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#0B0E0B"
+        android:visibility="gone">
+
+        <!-- Terminal header bar -->
+        <TextView
+            android:id="@+id/tvTerminalHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:textColor="#B9F6CA"
+            android:background="#081008"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:singleLine="true" />
+
+        <!-- Separator -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1A2A1A" />
+
+        <!-- Column headers -->
+        <TextView
+            android:id="@+id/tvLogColumnHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:textColor="#A5D6A7"
+            android:background="#081008"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:text="[  TIME  ]   ASSET NUMBER " />
+
+        <!-- Separator -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1A2A1A" />
+
+        <!-- Scan log entries -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvScanLog"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#0B0E0B"
+            android:clipToPadding="false"
+            android:paddingBottom="4dp"
+            android:scrollbars="vertical" />
+
+        <!-- Empty state -->
+        <TextView
+            android:id="@+id/tvLogEmpty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:textSize="13sp"
+            android:textColor="#A5D6A7"
+            android:gravity="center"
+            android:text="No scans recorded today.\n\nSwitch to the SCAN tab to begin."
+            android:visibility="gone" />
+
+        <!-- Separator above footer -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1A2A1A" />
+
+        <!-- Output file path footer - terminal styled -->
+        <TextView
+            android:id="@+id/tvOutputPath"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:textSize="10sp"
+            android:textColor="#B9F6CA"
+            android:background="#081008"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="5dp"
+            android:paddingBottom="5dp"
+            android:singleLine="true"
+            android:ellipsize="start" />
+
+    </LinearLayout>
 
 </LinearLayout>

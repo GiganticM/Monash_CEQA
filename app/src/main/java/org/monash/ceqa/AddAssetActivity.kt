@@ -37,8 +37,9 @@ class AddAssetActivity : AppCompatActivity() {
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
+        // Force uppercase for department and serial (asset number already uppercase from scan)
         binding.etDepartment.filters = arrayOf(InputFilter.AllCaps())
-        binding.etSerial.filters = arrayOf(InputFilter.AllCaps())
+        binding.etSerial.filters     = arrayOf(InputFilter.AllCaps())
 
         binding.btnSave.setOnClickListener {
             if (validateFields()) {
@@ -96,12 +97,12 @@ class AddAssetActivity : AppCompatActivity() {
             putExtra(EXTRA_MODEL,        binding.etModel.text.toString().trim())
             putExtra(EXTRA_SERIAL,       binding.etSerial.text.toString().trim())
         }
-        setResult(Activity.RESULT_OK, resultIntent)
+        setResult(RESULT_OK, resultIntent)
         finish()
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        setResult(Activity.RESULT_CANCELED)
+        setResult(RESULT_CANCELED)
         finish()
         return true
     }

@@ -1,6 +1,8 @@
 package org.monash.ceqa
 
 import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -25,13 +27,19 @@ class ScanLogAdapter(
         private const val COLOR_DEPT     = "#2E7D32"
         private const val COLOR_ROW_EVEN = "#0B0E0B"
         private const val COLOR_ROW_ODD  = "#0D120D"
+
+        // Sticker dot colours
+        private const val COLOR_STICKER_YELLOW = "#FDD835"  // 12 mths
+        private const val COLOR_STICKER_WHITE  = "#F5F5F5"  // 24 mths
+        private const val COLOR_STICKER_GREEN  = "#66BB6A"  // 60 mths
     }
 
-    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvTime:        TextView = view.findViewById(R.id.tvLogTime)
         val tvAssetNumber: TextView = view.findViewById(R.id.tvLogAssetNumber)
         val tvType:        TextView = view.findViewById(R.id.tvLogType)
         val tvDetails:     TextView = view.findViewById(R.id.tvLogDetails)
+        val viewDot:       View     = view.findViewById(R.id.viewStickerDot)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -54,6 +62,21 @@ class ScanLogAdapter(
 
         holder.tvAssetNumber.text = asset.assetNumber
         holder.tvAssetNumber.setTextColor(Color.parseColor(COLOR_ASSET))
+
+        // Sticker dot
+        val dotColor = when (asset.routinePeriod) {
+            12   -> COLOR_STICKER_YELLOW
+            24   -> COLOR_STICKER_WHITE
+            60   -> COLOR_STICKER_GREEN
+            else -> null
+        }
+        if (dotColor != null) {
+            holder.viewDot.background.colorFilter =
+                PorterDuffColorFilter(Color.parseColor(dotColor), PorterDuff.Mode.SRC_IN)
+            holder.viewDot.visibility = View.VISIBLE
+        } else {
+            holder.viewDot.visibility = View.GONE
+        }
 
         if (asset.isNew) {
             holder.tvType.text = "NEW"

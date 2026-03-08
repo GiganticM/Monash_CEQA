@@ -28,7 +28,7 @@
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
-        android:theme="@style/Theme.AssetScanner"
+        android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar"
         android:supportsRtl="true">
 
         <activity
@@ -43,6 +43,11 @@
 
         <activity
             android:name=".AddAssetActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".SettingsActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

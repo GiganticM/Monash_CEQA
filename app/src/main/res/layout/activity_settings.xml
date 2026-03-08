@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Toolbar with Save action -->
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="⚙️ Settings"
+        app:navigationIcon="?attr/homeAsUpIndicator" />
+
+    <!-- Scrollable content -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- ── Scanner name ───────────────────────────────────────── -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Scanner Number"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="#1A1A2E" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Please enter the number on the scanner.\nOnly needed for initial setup."
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Number on the scanner"
+                app:placeholderText="e.g. 1">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etScannerName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ── Output folder ──────────────────────────────────────── -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="QA Record Storage Location"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="#1A1A2E" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Choose where to save the QA results."
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnChangeFolder"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="📁 Change Folder" />
+
+            <TextView
+                android:id="@+id/tvCurrentFolder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Loading..."
+                android:textSize="11sp"
+                android:textColor="#888888"
+                android:layout_marginTop="4dp"
+                android:ellipsize="middle"
+                android:singleLine="true" />
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ── LOG tab font size ──────────────────────────────────── -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Logged QA Record Font Size"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="#1A1A2E" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="This changes the font size in the LOG tab."
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="8dp" />
+
+            <RadioGroup
+                android:id="@+id/rgFontSize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/rbFontSmall"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Small"
+                    android:textSize="14sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp" />
+
+                <RadioButton
+                    android:id="@+id/rbFontMedium"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Medium"
+                    android:textSize="14sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp" />
+
+                <RadioButton
+                    android:id="@+id/rbFontLarge"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Large"
+                    android:textSize="14sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="6dp" />
+
+            </RadioGroup>
+
+            <!-- Divider -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E0E0E0"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp" />
+
+            <!-- ── Scan result notification duration ─────────────────── -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Scan Result Notification Duration"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                android:textColor="#1A1A2E" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="How long the FOUND / NEW result banner stays on screen."
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="4dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="2s"
+                    android:textSize="12sp"
+                    android:textColor="#888888" />
+
+                <TextView
+                    android:id="@+id/tvSnackbarDurationLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="3s"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:textColor="#1A1A2E" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="10s"
+                    android:textSize="12sp"
+                    android:textColor="#888888"
+                    android:gravity="end" />
+
+            </LinearLayout>
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/sliderSnackbarDuration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:valueFrom="2"
+                android:valueTo="10"
+                android:stepSize="1"
+                android:value="3"
+                android:layout_marginBottom="8dp" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

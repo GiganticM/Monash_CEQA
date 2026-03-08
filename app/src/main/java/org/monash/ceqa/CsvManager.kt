@@ -20,8 +20,9 @@ class CsvManager(private val context: Context) {
     // ─── Source record ────────────────────────────────────────────────────────
 
     data class SourceRecord(
-        val assetNumber: String,
-        val department:  String
+        val assetNumber:   String,
+        val department:    String,
+        val routinePeriod: Int = 0   // 0 = blank/unknown, 6, 12, 24, or 60
     )
 
     // ─── Constants ────────────────────────────────────────────────────────────
@@ -147,15 +148,16 @@ class CsvManager(private val context: Context) {
                     if (isFirstRow) { isFirstRow = false; continue }
                     val row = line ?: continue
 
-                    val assetNumber = row.getOrElse(0) { "" }.trim()
-                    val serial      = row.getOrElse(1) { "" }.trim()
-                    val department  = row.getOrElse(2) { "" }.trim()
-                    val barcode     = row.getOrElse(3) { "" }.trim()
+                    val assetNumber   = row.getOrElse(0) { "" }.trim()
+                    val serial        = row.getOrElse(1) { "" }.trim()
+                    val department    = row.getOrElse(2) { "" }.trim()
+                    val barcode       = row.getOrElse(3) { "" }.trim()
+                    val routinePeriod = row.getOrElse(4) { "" }.trim().toIntOrNull() ?: 0
 
                     if (assetNumber.isEmpty()) continue
                     assetCount++
 
-                    val record = SourceRecord(assetNumber, department)
+                    val record = SourceRecord(assetNumber, department, routinePeriod)
                     addToMap(assetNumber, record)
                     addToMap(serial,      record)
                     addToMap(barcode,     record)

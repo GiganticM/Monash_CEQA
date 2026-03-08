@@ -10,13 +10,14 @@ and captures details for new ones.
 
 | Feature | Implementation |
 |---|---|
-| Read source CSV | Storage Access Framework + OpenCSV |
+| Read source CSV (up to 40k+ records) | Storage Access Framework + OpenCSV |
 | Persist source CSV across app restarts | `SharedPreferences` URI storage |
+| Text match against first column | `HashSet<String>` — O(1) lookup, near-instant |
 | "Found" floating notification | Material `Snackbar` overlay |
 | Duplicate detection | Checked against output CSV before logging |
 | Output matched asset to CSV in real time | `FileWriter(append=true)` — writes on every submission |
 | New asset detail screen | Second `Activity` with Location, Make, Model, Serial fields |
-| Bluetooth SPP transmission | Classic BT RFCOMM socket, ASCII encoded, `\r` terminated |
+| Bluetooth SPP transmission | Classic BT RFCOMM socket, ASCII encoded, `\r\n` terminated |
 | BT fallback for HC-05/HC-06 modules | Hidden `createRfcommSocket` API on channel 1 |
 | Bluetooth permission handling | API-split for Android 11 and below vs Android 12+ |
 
@@ -88,7 +89,7 @@ AssetScanner/
 - Works with a **Bluetooth barcode scanner** — scanners emulate keyboard input
   and typically send a newline which triggers the search automatically
 - The asset ID string is **immediately transmitted to the SPP slave device** as
-  ASCII bytes (`\r` terminated), regardless of whether a match is found
+  ASCII bytes (`\r\n` terminated), regardless of whether a match is found
 
 ### Match found ✓
 - A green Snackbar floats at the bottom: `✓ FOUND — 'ABC123' logged`
@@ -106,7 +107,7 @@ AssetScanner/
 ## File Formats
 
 ### Source CSV (your lookup reference — read only)
-The app read the columns for asset number, serial number, department and barcode respectively.
+The app only reads the **first column**. All other columns are ignored.
 A header row is expected and will be skipped.
 
 ```
@@ -116,7 +117,7 @@ XYZ789,HP Printer,Finance
 NB-042,MacBook Air,Design
 ```
 
-### Output CSV (scanned_assets.csv)
+### Output CSV (scanned_assets.csv — written by the app)
 Saved to: `/sdcard/Android/data/com.example.assetscanner/files/scanned_assets.csv`
 Accessible via Android's Files app or USB connection to a PC.
 
@@ -152,3 +153,11 @@ NEW001,Reception,Apple,MacBook Air,C02XG1JUJG5J
 | Android 12+ (API 31+) | `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` |
 
 ---
+
+## Extending the App
+
+- **Camera barcode scanning** → add `com.google.mlkit:barcode-scanning` + CameraX; the scanned value feeds directly into `performSearch()`
+- **Receive data from SPP device** → add an input stream reader loop in `BluetoothSppManager` on a separate coroutine
+- **Export output CSV via email** → use `FileProvider` + `Intent.ACTION_SEND`
+- **View scan history** → add a `RecyclerView` backed by `csvManager.readSavedAssets()`
+- **Only send to BT on match** → move `sendViaBluetooth(query)` inside the `if (matched)` block in `MainActivity.performSearch()`
