@@ -1,30 +1,28 @@
 package org.monash.ceqa
 
 import android.Manifest
-import android.app.Activity
+import android.animation.ValueAnimator
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.text.InputFilter
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
-import android.animation.ValueAnimator
-import android.graphics.Color
 import android.view.View
-import android.widget.LinearLayout
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
-import android.widget.TextView
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -43,6 +41,7 @@ import org.monash.ceqa.models.Asset
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.content.edit
 
 class MainActivity : AppCompatActivity() {
 
@@ -187,7 +186,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
+        prefs.edit {putBoolean(KEY_WAS_CONNECTED, btManager.isConnected)}
         try {
             unregisterReceiver(aclReceiver)
         } catch (_: IllegalArgumentException) {
@@ -433,7 +432,7 @@ class MainActivity : AppCompatActivity() {
                 reResolveDepartments()
             }.onFailure {
                 lookupMap = emptyMap()
-                binding.tvCsvStatus.text = "✗ Failed to load csv file!"
+                binding.tvCsvStatus.text = "✗ Failed to load source csv file!"
                 csvManager.clearSourceUri()
                 Toast.makeText(this@MainActivity, "Error: ${it.message}", Toast.LENGTH_LONG).show()
             }
@@ -574,6 +573,7 @@ class MainActivity : AppCompatActivity() {
      * On failure attempts a one-shot silent reconnect and retries.
      * Uses [showSnackbar] on final failure so it never overlaps a result banner.
      */
+    @Suppress("MissingPermission")
     private fun sendViaBluetooth(text: String) {
         if (!btManager.isConnected) return
         lifecycleScope.launch(Dispatchers.IO) {
@@ -683,7 +683,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         AlertDialog.Builder(this@MainActivity)
                             .setTitle("Connection Failed")
-                            .setMessage("${result.error}\n\nMake sure the device is powered on and in range.")
+                            .setMessage("${result.error}\n\nMake sure the MEM is powered on and in range.")
                             .setPositiveButton("OK", null)
                             .show()
                     }

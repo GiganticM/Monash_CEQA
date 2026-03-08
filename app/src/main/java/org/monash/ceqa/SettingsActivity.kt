@@ -1,7 +1,5 @@
 package org.monash.ceqa
 
-import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -9,15 +7,8 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.Window.FEATURE_NO_TITLE
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.slider.Slider
-import com.google.android.material.textfield.TextInputEditText
 import org.monash.ceqa.databinding.ActivitySettingsBinding
 
 /**
