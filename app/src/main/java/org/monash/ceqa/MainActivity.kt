@@ -1,28 +1,31 @@
 package org.monash.ceqa
 
 import android.Manifest
-import android.animation.ValueAnimator
+import android.app.Activity
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.text.InputFilter
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
-import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.animation.ValueAnimator
+import android.annotation.SuppressLint
+import android.graphics.Color
 import android.view.View
+import android.widget.LinearLayout
 import android.view.inputmethod.EditorInfo
 import android.widget.ArrayAdapter
-import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -41,7 +44,6 @@ import org.monash.ceqa.models.Asset
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.core.content.edit
 
 class MainActivity : AppCompatActivity() {
 
@@ -125,7 +127,7 @@ class MainActivity : AppCompatActivity() {
     private val settingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK) {
+        if (result.resultCode == Activity.RESULT_OK) {
             // Re-read font size in case it changed
             val newFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_LARGE)
             scanLogAdapter.fontSizeSp = newFontSize
@@ -186,7 +188,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        prefs.edit {putBoolean(KEY_WAS_CONNECTED, btManager.isConnected)}
+        prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
         try {
             unregisterReceiver(aclReceiver)
         } catch (_: IllegalArgumentException) {
@@ -237,6 +239,17 @@ class MainActivity : AppCompatActivity() {
         btManager.disconnect()
     }
 
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (scanLogAdapter.selectionMode) {
+            scanLogAdapter.exitSelectionMode()
+            binding.layoutSelectionBar.visibility = View.GONE
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
+
     // ─── Scan Log ─────────────────────────────────────────────────────────────
 
     private fun setupScanLog() {
@@ -248,6 +261,30 @@ class MainActivity : AppCompatActivity() {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = scanLogAdapter
             setHasFixedSize(false)
+        }
+
+        // ── Selection mode callbacks ──────────────────────────────────────────
+        scanLogAdapter.onEnterSelectionMode = {
+            binding.layoutSelectionBar.visibility = View.VISIBLE
+            binding.tvSelectionCount.text = "1 selected"
+        }
+        scanLogAdapter.onSelectionChanged = { count ->
+            binding.tvSelectionCount.text = if (count == 1) "1 selected" else "$count selected"
+        }
+        binding.btnCancelSelection.setOnClickListener {
+            scanLogAdapter.exitSelectionMode()
+            binding.layoutSelectionBar.visibility = View.GONE
+        }
+        binding.btnDeleteSelected.setOnClickListener {
+            val count = scanLogAdapter.selectedCount
+            if (count == 0) return@setOnClickListener
+            val label = if (count == 1) "1 record" else "$count records"
+            AlertDialog.Builder(this)
+                .setTitle("Delete Records")
+                .setMessage("Are you sure you want to permanently delete $label from the log and the output CSV?\n\nThis cannot be undone.")
+                .setPositiveButton("Delete") { _, _ -> deleteSelectedRecords() }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
 
         updateTerminalHeader()
@@ -432,7 +469,7 @@ class MainActivity : AppCompatActivity() {
                 reResolveDepartments()
             }.onFailure {
                 lookupMap = emptyMap()
-                binding.tvCsvStatus.text = "✗ Failed to load source csv file!"
+                binding.tvCsvStatus.text = "✗ Failed to load csv file!"
                 csvManager.clearSourceUri()
                 Toast.makeText(this@MainActivity, "Error: ${it.message}", Toast.LENGTH_LONG).show()
             }
@@ -566,6 +603,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun deleteSelectedRecords() {
+        val toDelete = scanLogAdapter.getSelectedAssetNumbers()
+        lifecycleScope.launch(Dispatchers.IO) {
+            csvManager.deleteAssets(toDelete)
+            withContext(Dispatchers.Main) {
+                scanLog.removeAll { it.assetNumber in toDelete }
+                scanLogAdapter.exitSelectionMode()
+                binding.layoutSelectionBar.visibility = View.GONE
+                scanLogAdapter.notifyDataSetChanged()
+                updateTerminalHeader()
+                updateEmptyState()
+                val label = if (toDelete.size == 1) "1 record deleted" else "${toDelete.size} records deleted"
+                Toast.makeText(this@MainActivity, label, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // ─── Bluetooth ────────────────────────────────────────────────────────────
 
     /**
@@ -573,7 +627,6 @@ class MainActivity : AppCompatActivity() {
      * On failure attempts a one-shot silent reconnect and retries.
      * Uses [showSnackbar] on final failure so it never overlaps a result banner.
      */
-    @Suppress("MissingPermission")
     private fun sendViaBluetooth(text: String) {
         if (!btManager.isConnected) return
         lifecycleScope.launch(Dispatchers.IO) {
@@ -583,6 +636,7 @@ class MainActivity : AppCompatActivity() {
                 // Device may have power-cycled - attempt silent reconnect once
                 val lastDevice = btManager.lastDevice
                 if (lastDevice != null) {
+                    @SuppressLint("MissingPermission")
                     Log.i(
                         "MainActivity",
                         "BT send failed - attempting silent reconnect to ${lastDevice.name}"
@@ -683,7 +737,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         AlertDialog.Builder(this@MainActivity)
                             .setTitle("Connection Failed")
-                            .setMessage("${result.error}\n\nMake sure the MEM is powered on and in range.")
+                            .setMessage("${result.error}\n\nMake sure the device is powered on and in range.")
                             .setPositiveButton("OK", null)
                             .show()
                     }
@@ -715,7 +769,7 @@ class MainActivity : AppCompatActivity() {
             if (duration > 10) {
                 val snackLayout = view as android.widget.FrameLayout
                 val countdownBar = View(this@MainActivity).apply {
-                    setBackgroundColor(Color.argb(150, 255, 255, 255))
+                    setBackgroundColor(Color.argb(80, 255, 255, 255))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 6
                     )
@@ -745,9 +799,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showFoundBanner(assetNumber: String, alreadyLogged: Boolean, routinePeriod: Int = 0) {
         val stickerSuffix = when (routinePeriod) {
-            12   -> "\n   [YELLOW STICKER (12mths)]"
-            24   -> "\n   [WHITE STICKER (24mths)]"
-            60   -> "\n   [GREEN STICKER (60mths)]"
+            12   -> "\n[YELLOW (12mths)]"
+            24   -> "\n[WHITE (24mths)]"
+            60   -> "\n[GREEN (60mths)]"
             else -> ""
         }
         val stickerColor = when (routinePeriod) {
@@ -806,7 +860,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateTerminalHeader() {
         val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
         val count = scanLogAdapter.recordCount()
-        csvManager.scannerName.ifBlank { "DEFAULT" }.uppercase()
+        val scanner = csvManager.scannerName.ifBlank { "DEFAULT" }.uppercase()
         val label = if (count == 1) "1 RECORD TODAY" else "$count RECORDS TODAY"
         binding.tvTerminalHeader.text = "[ MONASH CEQA │ $date │ $label ]"
     }

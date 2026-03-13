@@ -1,14 +1,20 @@
 package org.monash.ceqa
 
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
-import android.view.Window.FEATURE_NO_TITLE
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.slider.Slider
+import com.google.android.material.textfield.TextInputEditText
 import org.monash.ceqa.databinding.ActivitySettingsBinding
 
 /**
@@ -45,23 +51,16 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportRequestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
-        supportRequestWindowFeature(FEATURE_NO_TITLE)
         setContentView(binding.root)
 
-        prefs      = getSharedPreferences(PREFS, MODE_PRIVATE)
+        prefs      = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         csvManager = CsvManager(this)
 
         // ── Toolbar ──────────────────────────────────────────────────────────
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-
-        binding.toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_save_settings) {
-                saveAndExit()
-                true
-            } else false
-        }
 
         // ── Scanner name ─────────────────────────────────────────────────────
         binding.etScannerName.setText(csvManager.scannerName)
@@ -89,18 +88,15 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
         menuInflater.inflate(R.menu.settings_menu, menu)
         return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_save_settings -> {
-                saveAndExit()
-                true
-            }
-            else                      -> super.onOptionsItemSelected(item)
+            R.id.action_save_settings -> { saveAndExit(); true }
+            else -> super.onOptionsItemSelected(item)
         }
     }
 
@@ -126,7 +122,7 @@ class SettingsActivity : AppCompatActivity() {
 
         csvManager.ensureOutputFileReady()
 
-        setResult(RESULT_OK)
+        setResult(Activity.RESULT_OK)
         finish()
     }
 
@@ -134,7 +130,7 @@ class SettingsActivity : AppCompatActivity() {
 
     /** Back arrow: discard changes, return to previous screen. */
     override fun onSupportNavigateUp(): Boolean {
-        setResult(RESULT_CANCELED)
+        setResult(Activity.RESULT_CANCELED)
         finish()
         return true
     }

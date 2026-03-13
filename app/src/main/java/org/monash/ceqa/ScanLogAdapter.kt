@@ -6,6 +6,7 @@ import android.graphics.PorterDuffColorFilter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import org.monash.ceqa.models.Asset
@@ -20,21 +21,62 @@ class ScanLogAdapter(
         const val FONT_SIZE_MEDIUM = 15f
         const val FONT_SIZE_LARGE  = 17f
 
-        private const val COLOR_TIME     = "#66BB6A"
-        private const val COLOR_ASSET    = "#00E676"
-        private const val COLOR_FOUND    = "#69F0AE"
-        private const val COLOR_NEW      = "#40C4FF"
-        private const val COLOR_DEPT     = "#2E7D32"
-        private const val COLOR_ROW_EVEN = "#0B0E0B"
-        private const val COLOR_ROW_ODD  = "#0D120D"
+        private const val COLOR_TIME          = "#66BB6A"
+        private const val COLOR_ASSET         = "#00E676"
+        private const val COLOR_FOUND         = "#69F0AE"
+        private const val COLOR_NEW           = "#40C4FF"
+        private const val COLOR_DEPT          = "#2E7D32"
+        private const val COLOR_ROW_EVEN      = "#0B0E0B"
+        private const val COLOR_ROW_ODD       = "#0D120D"
+        private const val COLOR_ROW_SELECTED  = "#1A3320"
 
-        // Sticker dot colours
-        private const val COLOR_STICKER_YELLOW = "#FDD835"  // 12 mths
-        private const val COLOR_STICKER_WHITE  = "#F5F5F5"  // 24 mths
-        private const val COLOR_STICKER_GREEN  = "#66BB6A"  // 60 mths
+        private const val COLOR_STICKER_YELLOW = "#FDD835"
+        private const val COLOR_STICKER_WHITE  = "#F5F5F5"
+        private const val COLOR_STICKER_GREEN  = "#66BB6A"
     }
 
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+    // ── Selection state ───────────────────────────────────────────────────────
+
+    var selectionMode: Boolean = false
+        private set
+
+    private val selectedPositions = mutableSetOf<Int>()
+
+    var onEnterSelectionMode: (() -> Unit)? = null
+    var onSelectionChanged: ((count: Int) -> Unit)? = null
+
+    fun enterSelectionMode(position: Int) {
+        selectionMode = true
+        selectedPositions.clear()
+        selectedPositions.add(position)
+        notifyDataSetChanged()
+        onEnterSelectionMode?.invoke()
+        onSelectionChanged?.invoke(selectedPositions.size)
+    }
+
+    fun exitSelectionMode() {
+        selectionMode = false
+        selectedPositions.clear()
+        notifyDataSetChanged()
+        onSelectionChanged?.invoke(0)
+    }
+
+    fun toggleSelection(position: Int) {
+        if (selectedPositions.contains(position)) selectedPositions.remove(position)
+        else selectedPositions.add(position)
+        notifyItemChanged(position)
+        onSelectionChanged?.invoke(selectedPositions.size)
+    }
+
+    fun getSelectedAssetNumbers(): Set<String> =
+        selectedPositions.mapNotNull { assets.getOrNull(it)?.assetNumber }.toSet()
+
+    val selectedCount: Int get() = selectedPositions.size
+
+    // ── ViewHolder ────────────────────────────────────────────────────────────
+
+    inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val cbSelect:      CheckBox = view.findViewById(R.id.cbSelect)
         val tvTime:        TextView = view.findViewById(R.id.tvLogTime)
         val tvAssetNumber: TextView = view.findViewById(R.id.tvLogAssetNumber)
         val tvType:        TextView = view.findViewById(R.id.tvLogType)
@@ -51,15 +93,31 @@ class ScanLogAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val asset = assets[position]
 
-        // Apply font sizes — details line is slightly smaller than primary
         holder.tvTime.textSize        = fontSizeSp
         holder.tvAssetNumber.textSize = fontSizeSp
         holder.tvType.textSize        = (fontSizeSp - 2f).coerceAtLeast(8f)
         holder.tvDetails.textSize     = (fontSizeSp - 1f).coerceAtLeast(8f)
 
+        // Checkbox
+        if (selectionMode) {
+            holder.cbSelect.visibility = View.VISIBLE
+            holder.cbSelect.isChecked  = selectedPositions.contains(position)
+        } else {
+            holder.cbSelect.visibility = View.GONE
+        }
+
+        // Clicks
+        holder.itemView.setOnLongClickListener {
+            if (!selectionMode) enterSelectionMode(holder.adapterPosition)
+            true
+        }
+        holder.itemView.setOnClickListener {
+            if (selectionMode) toggleSelection(holder.adapterPosition)
+        }
+
+        // Content
         holder.tvTime.text = "[${asset.timestamp.ifEmpty { "--:--:--" }}]"
         holder.tvTime.setTextColor(Color.parseColor(COLOR_TIME))
-
         holder.tvAssetNumber.text = asset.assetNumber
         holder.tvAssetNumber.setTextColor(Color.parseColor(COLOR_ASSET))
 
@@ -81,12 +139,8 @@ class ScanLogAdapter(
         if (asset.isNew) {
             holder.tvType.text = "NEW"
             holder.tvType.setTextColor(Color.parseColor(COLOR_NEW))
-
             val details = listOf(asset.department, asset.make, asset.model, asset.serial)
-                .filter { it.isNotBlank() }
-                .joinToString(" │ ")
-
-
+                .filter { it.isNotBlank() }.joinToString(" │ ")
             if (details.isNotBlank()) {
                 holder.tvDetails.text = details
                 holder.tvDetails.setTextColor(Color.parseColor(COLOR_DEPT))
@@ -97,7 +151,6 @@ class ScanLogAdapter(
         } else {
             holder.tvType.text = "FOUND"
             holder.tvType.setTextColor(Color.parseColor(COLOR_FOUND))
-
             if (asset.department.isNotBlank()) {
                 holder.tvDetails.text = asset.department
                 holder.tvDetails.setTextColor(Color.parseColor(COLOR_DEPT))
@@ -107,9 +160,13 @@ class ScanLogAdapter(
             }
         }
 
-        holder.itemView.setBackgroundColor(
-            Color.parseColor(if (position % 2 == 0) COLOR_ROW_EVEN else COLOR_ROW_ODD)
-        )
+        holder.itemView.setBackgroundColor(Color.parseColor(
+            when {
+                selectedPositions.contains(position) -> COLOR_ROW_SELECTED
+                position % 2 == 0                    -> COLOR_ROW_EVEN
+                else                                 -> COLOR_ROW_ODD
+            }
+        ))
     }
 
     override fun getItemCount(): Int = assets.size
@@ -121,6 +178,5 @@ class ScanLogAdapter(
 
     fun recordCount(): Int = assets.size
 
-    /** Call after changing [fontSizeSp] to refresh all visible rows. */
     fun refreshFontSize() = notifyDataSetChanged()
 }

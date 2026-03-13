@@ -232,4 +232,39 @@ class CsvManager(private val context: Context) {
     fun isAlreadyLogged(assetNumber: String): Boolean =
         readSavedAssets().any { it.assetNumber.equals(assetNumber, ignoreCase = true) }
 
+    /**
+     * Rewrites the output CSV omitting any rows whose asset_number is in [assetNumbers].
+     * The header row is always preserved.
+     */
+    fun deleteAssets(assetNumbers: Set<String>) {
+        val doc = getOutputDocumentFile(create = false) ?: return
+        val lower = assetNumbers.map { it.lowercase() }.toSet()
+
+        // Read all rows first
+        val kept = mutableListOf<Array<String>>()
+        context.contentResolver.openInputStream(doc.uri)?.use { inputStream ->
+            CSVReader(InputStreamReader(inputStream)).use { reader ->
+                var isHeader = true
+                var line: Array<String>?
+                while (reader.readNext().also { line = it } != null) {
+                    val row = line ?: continue
+                    if (isHeader) {
+                        kept.add(row)   // always keep header
+                        isHeader = false
+                        continue
+                    }
+                    val rowAsset = row.getOrElse(0) { "" }.trim().lowercase()
+                    if (rowAsset !in lower) kept.add(row)
+                }
+            }
+        }
+
+        // Rewrite entire file
+        context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
+            CSVWriter(OutputStreamWriter(os)).use { writer ->
+                kept.forEach { writer.writeNext(it) }
+            }
+        }
+    }
+
 }
