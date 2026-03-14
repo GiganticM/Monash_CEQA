@@ -24,9 +24,11 @@ import android.graphics.Color
 import android.view.View
 import android.widget.LinearLayout
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.ArrayAdapter
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -60,6 +62,14 @@ class MainActivity : AppCompatActivity() {
 
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
+
+    /** Buffer for hardware scanner input — flushed to etSearch only when Enter arrives,
+     *  avoiding race conditions with view initialisation on first scan after launch/resume. */
+    private val scanBuffer = StringBuilder()
+
+    /** Set to true just before launching the CSV file picker so onResume doesn't
+     *  show the "Reloading" message while the picker is returning. */
+    private var manualCsvPickInProgress = false
 
     /** Guards the one-shot silent BT reconnect on process launch so it never
      *  re-triggers when returning from AddAssetActivity or other sub-screens. */
@@ -167,9 +177,24 @@ class MainActivity : AppCompatActivity() {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        supportActionBar?.title = "Monash Health CEQA"
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Exit selection mode on back gesture/button; otherwise default behaviour
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (scanLogAdapter.selectionMode) {
+                    scanLogAdapter.exitSelectionMode()
+                    binding.layoutSelectionBar.visibility = View.GONE
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
 
         csvManager = CsvManager(this)
         btManager = BluetoothSppManager(this)
@@ -208,12 +233,15 @@ class MainActivity : AppCompatActivity() {
         // ── Restore source CSV if not already loaded ──────────────────────────
         // lookupMap is in-memory; if the process was not killed it's already
         // populated and we skip the reload entirely (no flicker, no status change).
-        if (lookupMap.isEmpty()) {
+        // Also skip if a manual CSV pick is in progress — the picker result will
+        // handle the load itself so we don't show the wrong "Reloading" message.
+        if (lookupMap.isEmpty() && !manualCsvPickInProgress) {
             csvManager.loadSavedSourceUri()?.let { savedUri ->
                 binding.tvCsvStatus.text = "Reloading saved csv file..."
                 loadSourceCsv(savedUri)
             }
         }
+        manualCsvPickInProgress = false
 
         // ── Restore Bluetooth connection if not already connected ─────────────
         // If the process was killed, lastKnownMac gives us the persisted MAC so
@@ -230,6 +258,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Move focus to the container so etSearch has no active InputConnection
+        // on resume. This matches the tab-switch state where the first scan works
+        // correctly — chars go via dispatchKeyEvent buffer rather than InputConnection.
+        binding.tabContentScan.requestFocus()
     }
 
     override fun onDestroy() {
@@ -239,14 +272,66 @@ class MainActivity : AppCompatActivity() {
         btManager.disconnect()
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        if (scanLogAdapter.selectionMode) {
-            scanLogAdapter.exitSelectionMode()
-            binding.layoutSelectionBar.visibility = View.GONE
-        } else {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
+    /**
+     * Focuses etSearch the moment the window is ready so InputConnection is
+     * active before the first scan. Immediately hides the soft keyboard so it
+     * doesn't appear - the hardware barcode scanner doesn't need it.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && binding.tabContentScan.visibility == View.VISIBLE) {
+            binding.etSearch.requestFocus()
+            val imm = getSystemService(InputMethodManager::class.java)
+            imm.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
+        }
+    }
+
+    /**
+     * Intercepts all hardware key events at the Activity level so the barcode
+     * scanner works even when [etSearch] is not focused (e.g. after switching
+     * tabs and back).  Only active when the SCAN tab is visible.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Only intercept on the SCAN tab
+        if (binding.tabContentScan.visibility != View.VISIBLE) return super.dispatchKeyEvent(event)
+        // Only act on key-down to avoid double-firing
+        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+
+        return when {
+            event.keyCode == KeyEvent.KEYCODE_ENTER -> {
+                // Snapshot the buffer now (before the post), then clear it
+                val buffered = scanBuffer.toString()
+                scanBuffer.clear()
+                // Defer by one frame so InputConnection has time to commit any
+                // pending characters into etSearch.text before we read it.
+                binding.etSearch.post {
+                    val fromField = binding.etSearch.text.toString()
+                    // Combine both paths in case any chars arrived via InputConnection
+                    val combined = (buffered + fromField).trim().uppercase()
+                    binding.etSearch.setText("")
+                    if (combined.isEmpty()) {
+                        binding.etSearch.error = "Please enter or scan asset number"
+                    } else if (lookupMap.isEmpty()) {
+                        Toast.makeText(this, "Please load a source csv file first", Toast.LENGTH_SHORT).show()
+                    } else {
+                        binding.etSearch.error = null
+                        performSearch(combined)
+                    }
+                    binding.etSearch.post { binding.etSearch.requestFocus() }
+                }
+                true
+            }
+            event.unicodeChar > 0 -> {
+                // Always buffer hardware key characters regardless of focus state.
+                // Soft keyboard input arrives via InputConnection and never reaches
+                // dispatchKeyEvent, so intercepting here does not affect soft keyboard.
+                // This avoids the first-scan-after-resume issue on Android 9 where
+                // etSearch.isFocused can be true but InputConnection isn't ready yet,
+                // causing chars passed to super to be silently dropped.
+                scanBuffer.append(event.unicodeChar.toChar().uppercaseChar())
+                true
+            }
+            else -> super.dispatchKeyEvent(event)
         }
     }
 
@@ -351,6 +436,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.menu_change_csv -> {
+                manualCsvPickInProgress = true
                 pickCsvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
                 true
             }
@@ -403,7 +489,7 @@ class MainActivity : AppCompatActivity() {
             @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
 
         AlertDialog.Builder(this)
-            .setTitle("ℹ️ About Monash CEQA")
+            .setTitle("ℹ️ About ${getString(R.string.app_name)}")
             .setMessage("\nVersion: ${packageInfo.versionName}\n\nBuilt by: Rui Xue")
             .setPositiveButton("OK", null)
             .show()
@@ -414,21 +500,6 @@ class MainActivity : AppCompatActivity() {
     private fun setupClickListeners() {
         // Force uppercase for both soft keyboard and hardware scanner input
         binding.etSearch.filters = arrayOf(InputFilter.AllCaps())
-        val triggerSearch = {
-            val query = binding.etSearch.text.toString().trim()
-            if (query.isEmpty()) {
-                binding.etSearch.error = "Please enter or scan asset number"
-            } else if (lookupMap.isEmpty()) {
-                Toast.makeText(this, "Please load a source csv file first", Toast.LENGTH_SHORT)
-                    .show()
-            } else {
-                binding.etSearch.error = null
-                performSearch(query)
-            }
-            // Always clear text and restore focus after a search attempt
-            binding.etSearch.setText("")
-            binding.etSearch.post { binding.etSearch.requestFocus() }
-        }
 
         binding.btnSearch.setOnClickListener { triggerSearch() }
 
@@ -447,6 +518,21 @@ class MainActivity : AppCompatActivity() {
                 true  // consume Enter to prevent focus navigation
             } else false
         }
+    }
+
+    private fun triggerSearch() {
+        val query = binding.etSearch.text.toString().trim()
+        if (query.isEmpty()) {
+            binding.etSearch.error = "Please enter or scan asset number"
+        } else if (lookupMap.isEmpty()) {
+            Toast.makeText(this, "Please load a source csv file first", Toast.LENGTH_SHORT).show()
+        } else {
+            binding.etSearch.error = null
+            performSearch(query)
+        }
+        // Always clear text and restore focus after a search attempt
+        binding.etSearch.setText("")
+        binding.etSearch.post { binding.etSearch.requestFocus() }
     }
 
     // ─── CSV Loading ──────────────────────────────────────────────────────────
@@ -862,7 +948,7 @@ class MainActivity : AppCompatActivity() {
         val count = scanLogAdapter.recordCount()
         val scanner = csvManager.scannerName.ifBlank { "DEFAULT" }.uppercase()
         val label = if (count == 1) "1 RECORD TODAY" else "$count RECORDS TODAY"
-        binding.tvTerminalHeader.text = "[ MONASH CEQA │ $date │ $label ]"
+        binding.tvTerminalHeader.text = "[ MH CEQA │ $date │ $label ]"
     }
 
     private fun updateEmptyState() {

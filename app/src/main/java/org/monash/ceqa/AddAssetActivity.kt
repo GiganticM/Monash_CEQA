@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputFilter
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.monash.ceqa.databinding.ActivityAddAssetBinding
@@ -46,6 +47,34 @@ class AddAssetActivity : AppCompatActivity() {
                 returnResult(assetNumber)
             }
         }
+
+        // Intercept back gesture - warn if user has started filling in fields
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (hasUnsavedInput()) showDiscardDialog()
+                else cancelAndExit()
+            }
+        })
+    }
+
+    // ─── Unsaved input check ──────────────────────────────────────────────────
+
+    /** Returns true if the user has typed anything into any field. */
+    private fun hasUnsavedInput(): Boolean =
+        binding.etDepartment.text?.isNotBlank() == true ||
+        binding.etMake.text?.isNotBlank()       == true ||
+        binding.etModel.text?.isNotBlank()      == true ||
+        binding.etSerial.text?.isNotBlank()     == true
+
+    // ─── Discard dialog ───────────────────────────────────────────────────────
+
+    private fun showDiscardDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Discard New Asset?")
+            .setMessage("You haven't finished adding this new asset.\nAre you sure you want to go back without saving?")
+            .setNegativeButton("Discard") { _, _ -> cancelAndExit() }
+            .setPositiveButton("Keep Editing", null)
+            .show()
     }
 
     // ─── Validation & Confirmation ────────────────────────────────────────────
@@ -73,9 +102,9 @@ class AddAssetActivity : AppCompatActivity() {
     private fun showIncompleteDialog(missingFields: List<String>) {
         val fieldList = missingFields.joinToString("\n") { "  • $it" }
         val message = if (missingFields.size == 1)
-            "The following field has not been filled in:\n\n$fieldList\n\nDo you want to save anyway?"
+            "The following field has not been filled in:\n$fieldList\n\nDo you want to save anyway?"
         else
-            "The following ${missingFields.size} fields have not been filled in:\n\n$fieldList\n\nDo you want to save anyway?"
+            "The following ${missingFields.size} fields have not been filled in:\n$fieldList\n\nDo you want to save anyway?"
 
         AlertDialog.Builder(this)
             .setTitle("Incomplete Information")
@@ -97,13 +126,21 @@ class AddAssetActivity : AppCompatActivity() {
             putExtra(EXTRA_MODEL,        binding.etModel.text.toString().trim())
             putExtra(EXTRA_SERIAL,       binding.etSerial.text.toString().trim())
         }
-        setResult(RESULT_OK, resultIntent)
+        setResult(Activity.RESULT_OK, resultIntent)
+        finish()
+    }
+
+    private fun cancelAndExit() {
+        setResult(Activity.RESULT_CANCELED)
         finish()
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        setResult(RESULT_CANCELED)
-        finish()
+        if (hasUnsavedInput()) {
+            showDiscardDialog()
+            return true
+        }
+        cancelAndExit()
         return true
     }
 }

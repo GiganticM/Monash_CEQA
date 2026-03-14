@@ -42,7 +42,9 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:padding="16dp"
-        android:background="#FFFFFF">
+        android:background="#FFFFFF"
+        android:focusable="true"
+        android:focusableInTouchMode="true">
 
         <!-- CSV + BT status rows with RECONNECT button spanning both -->
         <LinearLayout
