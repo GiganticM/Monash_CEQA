@@ -67,6 +67,41 @@ class BluetoothSppManager(private val context: Context) {
      */
     @Volatile private var connectIntentional = true
 
+    /** Called on the IO thread when the connection drops unexpectedly. */
+    var onDisconnected: (() -> Unit)? = null
+
+    /** Background thread that blocks on InputStream.read() — detects disconnection
+     *  within 1-2 seconds on any Android version, far faster than ACL broadcast on API 33+. */
+    @Volatile private var readerThread: Thread? = null
+
+    private fun startReaderThread() {
+        readerThread?.interrupt()
+        val s = socket ?: return
+        readerThread = Thread {
+            val buf = ByteArray(256)
+            try {
+                val inputStream = s.inputStream
+                while (!Thread.currentThread().isInterrupted) {
+                    val n = inputStream.read(buf)
+                    if (n < 0) break   // stream ended cleanly
+                }
+            } catch (_: IOException) {
+                // Socket closed — either by us (disconnect/cancelConnect) or remote drop
+            }
+            // Only fire callback if this was an unexpected drop (socket still set = we didn't close it)
+            if (socket != null) {
+                Log.i(TAG, "Reader thread detected disconnection")
+                disconnect()
+                onDisconnected?.invoke()
+            }
+        }.also { it.isDaemon = true; it.name = "bt-reader"; it.start() }
+    }
+
+    private fun stopReaderThread() {
+        readerThread?.interrupt()
+        readerThread = null
+    }
+
     val isConnected: Boolean
         get() = socket?.isConnected == true
 
@@ -141,6 +176,7 @@ class BluetoothSppManager(private val context: Context) {
             outputStream = newSocket.outputStream
             lastDevice = device
             prefs.edit().putString(KEY_LAST_MAC, device.address).apply()
+            startReaderThread()
 
             Log.i(TAG, "Connected to ${device.name}")
             ConnectionResult.Success(device.name ?: device.address)
@@ -180,6 +216,7 @@ class BluetoothSppManager(private val context: Context) {
             outputStream = fallbackSocket.outputStream
             lastDevice = device
             prefs.edit().putString(KEY_LAST_MAC, device.address).apply()
+            startReaderThread()
 
             Log.i(TAG, "Connected via fallback to ${device.name}")
             ConnectionResult.Success(device.name ?: device.address)
@@ -231,6 +268,7 @@ class BluetoothSppManager(private val context: Context) {
      * Safe to call even if not connected.
      */
     fun disconnect() {
+        stopReaderThread()
         try { outputStream?.close() } catch (_: IOException) {}
         try { socket?.close() }       catch (_: IOException) {}
         outputStream = null

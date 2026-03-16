@@ -18,6 +18,7 @@ import android.text.style.ForegroundColorSpan
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.graphics.Color
@@ -59,6 +60,10 @@ class MainActivity : AppCompatActivity() {
 
     /** Tracks the currently running connect coroutine so it can be cancelled immediately. */
     private var connectJob: Job? = null
+    /** Runs a 10-second retry loop after unexpected disconnection. Cancelled on manual disconnect. */
+    private var reconnectJob: Job? = null
+    /** Pulses the RECONNECT button alpha while auto-reconnect is in progress. */
+    private var reconnectPulse: ObjectAnimator? = null
 
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
@@ -93,6 +98,7 @@ class MainActivity : AppCompatActivity() {
             btManager.disconnect()
             updateBtStatusIndicator()
             Log.i("MainActivity", "ACL disconnected: ${device?.address}")
+            startAutoReconnect()
         }
     }
 
@@ -198,6 +204,13 @@ class MainActivity : AppCompatActivity() {
 
         csvManager = CsvManager(this)
         btManager = BluetoothSppManager(this)
+        btManager.onDisconnected = {
+            // Called on IO thread — post to main thread
+            runOnUiThread {
+                updateBtStatusIndicator()
+                startAutoReconnect()
+            }
+        }
 
         csvManager.ensureOutputFileReady()
 
@@ -268,6 +281,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         connectJob?.cancel()
+        reconnectJob?.cancel()
+        stopReconnectPulse()
         btManager.cancelConnect()
         btManager.disconnect()
     }
@@ -275,14 +290,12 @@ class MainActivity : AppCompatActivity() {
     /**
      * Focuses etSearch the moment the window is ready so InputConnection is
      * active before the first scan. Immediately hides the soft keyboard so it
-     * doesn't appear - the hardware barcode scanner doesn't need it.
+     * doesn't appear — the hardware barcode scanner doesn't need it.
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && binding.tabContentScan.visibility == View.VISIBLE) {
             binding.etSearch.requestFocus()
-            val imm = getSystemService(InputMethodManager::class.java)
-            imm.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
         }
     }
 
@@ -457,6 +470,9 @@ class MainActivity : AppCompatActivity() {
 
             R.id.menu_bt_disconnect -> {
                 connectJob?.cancel()
+                reconnectJob?.cancel()
+                reconnectJob = null
+                stopReconnectPulse()
                 btManager.cancelConnect()
                 btManager.disconnect()
                 btManager.clearLastDevice()
@@ -793,6 +809,61 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun startReconnectPulse() {
+        reconnectPulse?.cancel()
+        reconnectPulse = ObjectAnimator.ofFloat(binding.btnBtReconnect, "alpha", 1f, 0.25f).apply {
+            duration = 800
+            repeatMode = ObjectAnimator.REVERSE
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+    }
+
+    private fun stopReconnectPulse() {
+        reconnectPulse?.cancel()
+        reconnectPulse = null
+        binding.btnBtReconnect.alpha = 1f
+    }
+
+    /**
+     * Starts a background loop that retries connecting to the last known device
+     * every 10 seconds until it succeeds or is cancelled.
+     * No-op if already reconnecting or no last device MAC is known.
+     */
+    private fun startAutoReconnect() {
+        if (reconnectJob?.isActive == true) return
+        val mac = btManager.lastKnownMac ?: return
+        startReconnectPulse()
+        reconnectJob = lifecycleScope.launch {
+            Log.i("MainActivity", "Auto-reconnect loop started for $mac")
+            while (true) {
+                kotlinx.coroutines.delay(10_000)
+                if (btManager.isConnected) break
+                val device = btManager.getPairedDevices().find { it.address == mac } ?: break
+                Log.i("MainActivity", "Auto-reconnect: attempting…")
+                val result = withContext(Dispatchers.IO) { btManager.connect(device) }
+                when (result) {
+                    is BluetoothSppManager.ConnectionResult.Success -> {
+                        Log.i("MainActivity", "Auto-reconnect succeeded")
+                        stopReconnectPulse()
+                        updateBtStatusIndicator()
+                        showSnackbar(
+                            "✓ Reconnected to ${result.deviceName}",
+                            android.R.color.holo_green_dark,
+                            Snackbar.LENGTH_SHORT
+                        )
+                        break
+                    }
+                    is BluetoothSppManager.ConnectionResult.Failure ->
+                        Log.i("MainActivity", "Auto-reconnect attempt failed, retrying in 10s…")
+                    is BluetoothSppManager.ConnectionResult.Cancelled -> break
+                }
+            }
+            stopReconnectPulse()
+            reconnectJob = null
+        }
+    }
+
     private fun connectToDevice(device: BluetoothDevice, silent: Boolean = false) {
         // Cancel any in-progress attempt immediately before starting a new one
         connectJob?.cancel()
@@ -807,6 +878,9 @@ class MainActivity : AppCompatActivity() {
             connectJob = null
             when (result) {
                 is BluetoothSppManager.ConnectionResult.Success -> {
+                    reconnectJob?.cancel()
+                    reconnectJob = null
+                    stopReconnectPulse()
                     updateBtStatusIndicator()
                     showSnackbar(
                         "✓ Connected to ${result.deviceName}",
