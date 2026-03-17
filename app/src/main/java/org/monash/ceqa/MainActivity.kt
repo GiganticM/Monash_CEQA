@@ -68,7 +68,7 @@ class MainActivity : AppCompatActivity() {
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
 
-    /** Buffer for hardware scanner input — flushed to etSearch only when Enter arrives,
+    /** Buffer for hardware scanner input -- flushed to etSearch only when Enter arrives,
      *  avoiding race conditions with view initialisation on first scan after launch/resume. */
     private val scanBuffer = StringBuilder()
 
@@ -205,7 +205,7 @@ class MainActivity : AppCompatActivity() {
         csvManager = CsvManager(this)
         btManager = BluetoothSppManager(this)
         btManager.onDisconnected = {
-            // Called on IO thread — post to main thread
+            // Called on IO thread - post to main thread
             runOnUiThread {
                 updateBtStatusIndicator()
                 startAutoReconnect()
@@ -246,7 +246,7 @@ class MainActivity : AppCompatActivity() {
         // ── Restore source CSV if not already loaded ──────────────────────────
         // lookupMap is in-memory; if the process was not killed it's already
         // populated and we skip the reload entirely (no flicker, no status change).
-        // Also skip if a manual CSV pick is in progress — the picker result will
+        // Also skip if a manual CSV pick is in progress - the picker result will
         // handle the load itself so we don't show the wrong "Reloading" message.
         if (lookupMap.isEmpty() && !manualCsvPickInProgress) {
             csvManager.loadSavedSourceUri()?.let { savedUri ->
@@ -274,7 +274,7 @@ class MainActivity : AppCompatActivity() {
 
         // Move focus to the container so etSearch has no active InputConnection
         // on resume. This matches the tab-switch state where the first scan works
-        // correctly — chars go via dispatchKeyEvent buffer rather than InputConnection.
+        // correctly - chars go via dispatchKeyEvent buffer rather than InputConnection.
         binding.tabContentScan.requestFocus()
     }
 
@@ -290,7 +290,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Focuses etSearch the moment the window is ready so InputConnection is
      * active before the first scan. Immediately hides the soft keyboard so it
-     * doesn't appear — the hardware barcode scanner doesn't need it.
+     * doesn't appear - the hardware barcode scanner doesn't need it.
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -933,7 +933,7 @@ class MainActivity : AppCompatActivity() {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 6
                     )
-                    pivotX = 0f   // anchor left — bar drains from right to left
+                    pivotX = 0f   // anchor left - bar drains from right to left
                 }
                 snackLayout.addView(countdownBar)
 
