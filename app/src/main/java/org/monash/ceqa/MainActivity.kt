@@ -58,6 +58,10 @@ class MainActivity : AppCompatActivity() {
     private val scanLog = mutableListOf<Asset>()
     private var lookupMap: Map<String, List<CsvManager.SourceRecord>> = emptyMap()
 
+    /** True when the SCAN tab is the active tab — set synchronously in onTabSelected
+     *  so dispatchKeyEvent never races against the layout visibility pass. */
+    private var isScanTabActive = true
+
     /** Tracks the currently running connect coroutine so it can be cancelled immediately. */
     private var connectJob: Job? = null
     /** Runs a 10-second retry loop after unexpected disconnection. Cancelled on manual disconnect. */
@@ -68,7 +72,7 @@ class MainActivity : AppCompatActivity() {
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
 
-    /** Buffer for hardware scanner input -- flushed to etSearch only when Enter arrives,
+    /** Buffer for hardware scanner input — flushed to etSearch only when Enter arrives,
      *  avoiding race conditions with view initialisation on first scan after launch/resume. */
     private val scanBuffer = StringBuilder()
 
@@ -205,7 +209,7 @@ class MainActivity : AppCompatActivity() {
         csvManager = CsvManager(this)
         btManager = BluetoothSppManager(this)
         btManager.onDisconnected = {
-            // Called on IO thread - post to main thread
+            // Called on IO thread — post to main thread
             runOnUiThread {
                 updateBtStatusIndicator()
                 startAutoReconnect()
@@ -246,7 +250,7 @@ class MainActivity : AppCompatActivity() {
         // ── Restore source CSV if not already loaded ──────────────────────────
         // lookupMap is in-memory; if the process was not killed it's already
         // populated and we skip the reload entirely (no flicker, no status change).
-        // Also skip if a manual CSV pick is in progress - the picker result will
+        // Also skip if a manual CSV pick is in progress — the picker result will
         // handle the load itself so we don't show the wrong "Reloading" message.
         if (lookupMap.isEmpty() && !manualCsvPickInProgress) {
             csvManager.loadSavedSourceUri()?.let { savedUri ->
@@ -274,7 +278,7 @@ class MainActivity : AppCompatActivity() {
 
         // Move focus to the container so etSearch has no active InputConnection
         // on resume. This matches the tab-switch state where the first scan works
-        // correctly - chars go via dispatchKeyEvent buffer rather than InputConnection.
+        // correctly — chars go via dispatchKeyEvent buffer rather than InputConnection.
         binding.tabContentScan.requestFocus()
     }
 
@@ -290,7 +294,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Focuses etSearch the moment the window is ready so InputConnection is
      * active before the first scan. Immediately hides the soft keyboard so it
-     * doesn't appear - the hardware barcode scanner doesn't need it.
+     * doesn't appear — the hardware barcode scanner doesn't need it.
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -312,15 +316,14 @@ class MainActivity : AppCompatActivity() {
 
         return when {
             event.keyCode == KeyEvent.KEYCODE_ENTER -> {
-                // Snapshot the buffer now (before the post), then clear it
                 val buffered = scanBuffer.toString()
                 scanBuffer.clear()
-                // Defer by one frame so InputConnection has time to commit any
-                // pending characters into etSearch.text before we read it.
                 binding.etSearch.post {
                     val fromField = binding.etSearch.text.toString()
-                    // Combine both paths in case any chars arrived via InputConnection
-                    val combined = (buffered + fromField).trim().uppercase()
+                    // Prefer buffer if non-empty (scanner path); fall back to field
+                    // (InputConnection path). Using buffer+field would duplicate when
+                    // both paths delivered the same characters.
+                    val combined = (if (buffered.isNotEmpty()) buffered else fromField).trim().uppercase()
                     binding.etSearch.setText("")
                     if (combined.isEmpty()) {
                         binding.etSearch.error = "Please enter or scan asset number"
@@ -335,14 +338,13 @@ class MainActivity : AppCompatActivity() {
                 true
             }
             event.unicodeChar > 0 -> {
-                // Always buffer hardware key characters regardless of focus state.
-                // Soft keyboard input arrives via InputConnection and never reaches
-                // dispatchKeyEvent, so intercepting here does not affect soft keyboard.
-                // This avoids the first-scan-after-resume issue on Android 9 where
-                // etSearch.isFocused can be true but InputConnection isn't ready yet,
-                // causing chars passed to super to be silently dropped.
-                scanBuffer.append(event.unicodeChar.toChar().uppercaseChar())
-                true
+                // Buffer the character for the Enter handler to collect.
+                // Also pass to super so InputConnection receives it when etSearch
+                // is focused — this handles soft keyboard input correctly.
+                // The Enter handler combines both buffer + field to avoid duplicates
+                // when both paths deliver the same character.
+                scanBuffer.append(event.getUnicodeChar(0).toChar().uppercaseChar())
+                super.dispatchKeyEvent(event)
             }
             else -> super.dispatchKeyEvent(event)
         }
@@ -933,7 +935,7 @@ class MainActivity : AppCompatActivity() {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 6
                     )
-                    pivotX = 0f   // anchor left - bar drains from right to left
+                    pivotX = 0f   // anchor left — bar drains from right to left
                 }
                 snackLayout.addView(countdownBar)
 
