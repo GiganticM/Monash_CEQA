@@ -29,7 +29,7 @@ class CsvManager(private val context: Context) {
 
     companion object {
         // location removed, department is unified
-        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp")
+        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "qa_location")
 
         private const val PREFS_NAME          = "asset_scanner_prefs"
         private const val KEY_SOURCE_URI      = "source_uri"
@@ -197,7 +197,9 @@ class CsvManager(private val context: Context) {
                     saved.make,
                     saved.model,
                     saved.serial,
-                    saved.timestamp
+                    saved.timestamp,
+                    saved.userInitials,
+                    saved.qaLocation
                 ))
             }
         }
@@ -215,13 +217,15 @@ class CsvManager(private val context: Context) {
                     if (isHeader) { isHeader = false; continue }
                     val row = line ?: continue
                     assets.add(Asset(
-                        assetNumber = row.getOrElse(0) { "" }.uppercase(),
-                        department  = row.getOrElse(1) { "" },
-                        make        = row.getOrElse(2) { "" },
-                        model       = row.getOrElse(3) { "" },
-                        serial      = row.getOrElse(4) { "" },
-                        timestamp   = row.getOrElse(5) { "" },
-                        isNew       = row.getOrElse(2) { "" }.isNotBlank() || row.getOrElse(3) { "" }.isNotBlank()
+                        assetNumber  = row.getOrElse(0) { "" }.uppercase(),
+                        department   = row.getOrElse(1) { "" },
+                        make         = row.getOrElse(2) { "" },
+                        model        = row.getOrElse(3) { "" },
+                        serial       = row.getOrElse(4) { "" },
+                        timestamp    = row.getOrElse(5) { "" },
+                        isNew        = row.getOrElse(2) { "" }.isNotBlank() || row.getOrElse(3) { "" }.isNotBlank(),
+                        userInitials = row.getOrElse(6) { "" },
+                        qaLocation   = row.getOrElse(7) { "" }
                     ))
                 }
             }

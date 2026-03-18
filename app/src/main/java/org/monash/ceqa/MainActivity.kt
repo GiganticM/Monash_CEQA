@@ -165,12 +165,14 @@ class MainActivity : AppCompatActivity() {
             val data = result.data ?: return@registerForActivityResult
             val assetNumber = data.getStringExtra(AddAssetActivity.EXTRA_ASSET_NUMBER) ?: ""
             val asset = Asset(
-                assetNumber = assetNumber,
-                department = data.getStringExtra(AddAssetActivity.EXTRA_DEPARTMENT) ?: "",
-                make = data.getStringExtra(AddAssetActivity.EXTRA_MAKE) ?: "",
-                model = data.getStringExtra(AddAssetActivity.EXTRA_MODEL) ?: "",
-                serial = data.getStringExtra(AddAssetActivity.EXTRA_SERIAL) ?: "",
-                isNew = true
+                assetNumber  = assetNumber,
+                department   = data.getStringExtra(AddAssetActivity.EXTRA_DEPARTMENT) ?: "",
+                make         = data.getStringExtra(AddAssetActivity.EXTRA_MAKE) ?: "",
+                model        = data.getStringExtra(AddAssetActivity.EXTRA_MODEL) ?: "",
+                serial       = data.getStringExtra(AddAssetActivity.EXTRA_SERIAL) ?: "",
+                isNew        = true,
+                userInitials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: "",
+                qaLocation   = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
             )
             saveAsset(asset)
             sendViaBluetooth(assetNumber)
@@ -191,6 +193,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Redirect to session screen if no active session
+        if (!SessionActivity.isSessionActive(this)) {
+            startActivity(Intent(this, SessionActivity::class.java))
+            finish()
+            return
+        }
 
         // Exit selection mode on back gesture/button; otherwise default behaviour
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -223,6 +232,7 @@ class MainActivity : AppCompatActivity() {
         setupClickListeners()
         updateOutputPathLabel()
         updateBtStatusIndicator()
+        updateSessionInfoLabel()
         setupBtReconnectButton()
 
         // CSV and BT restore handled in onResume
@@ -520,6 +530,7 @@ class MainActivity : AppCompatActivity() {
         binding.etSearch.filters = arrayOf(InputFilter.AllCaps())
 
         binding.btnSearch.setOnClickListener { triggerSearch() }
+        binding.btnEndSession.setOnClickListener { showEndSessionDialog() }
 
         // Handle software Search / Done IME button
         binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
@@ -682,10 +693,12 @@ class MainActivity : AppCompatActivity() {
             showFoundBanner(record.assetNumber, alreadyLogged = true, routinePeriod = record.routinePeriod)
         } else {
             val asset = Asset(
-                assetNumber   = record.assetNumber,
-                department    = record.department,
-                isNew         = false,
-                routinePeriod = record.routinePeriod
+                assetNumber  = record.assetNumber,
+                department   = record.department,
+                isNew        = false,
+                routinePeriod = record.routinePeriod,
+                userInitials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: "",
+                qaLocation   = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
             )
             saveAsset(asset)
             showFoundBanner(record.assetNumber, alreadyLogged = false, routinePeriod = record.routinePeriod)
@@ -994,6 +1007,39 @@ class MainActivity : AppCompatActivity() {
             else android.R.color.holo_green_dark,
             duration
         )
+    }
+
+    private fun showEndSessionDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("End Session?")
+            .setMessage("Are you sure you want to end the current QA session?")
+            .setPositiveButton("End Session") { _, _ ->
+                prefs.edit()
+                    .putBoolean(SessionActivity.KEY_SESSION_ACTIVE, false)
+                    .remove(SessionActivity.KEY_USER_INITIALS)
+                    .remove(SessionActivity.KEY_QA_LOCATION)
+                    .apply()
+                connectJob?.cancel()
+                reconnectJob?.cancel()
+                stopReconnectPulse()
+                btManager.cancelConnect()
+                btManager.disconnect()
+                startActivity(Intent(this, SessionActivity::class.java))
+                finish()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun updateSessionInfoLabel() {
+        val initials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: ""
+        val location = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
+        if (initials.isNotEmpty() || location.isNotEmpty()) {
+            binding.tvSessionInfo.text = "👤 $initials  📍 $location"
+            binding.layoutSessionInfo.visibility = View.VISIBLE
+        } else {
+            binding.layoutSessionInfo.visibility = View.GONE
+        }
     }
 
     private fun updateBtStatusIndicator() {

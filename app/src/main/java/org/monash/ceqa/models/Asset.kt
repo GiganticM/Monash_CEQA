@@ -19,5 +19,7 @@ data class Asset(
     val serial:        String  = "",
     val timestamp:     String  = "",
     val isNew:         Boolean = false,
-    val routinePeriod: Int     = 0    // 0 = blank/6mth (no sticker), 12, 24, or 60
+    val routinePeriod: Int     = 0,
+    val userInitials:  String  = "",
+    val qaLocation:    String  = ""
 )
