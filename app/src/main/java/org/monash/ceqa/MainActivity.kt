@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             // Re-read font size in case it changed
-            val newFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_LARGE)
+            val newFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_MEDIUM)
             scanLogAdapter.fontSizeSp = newFontSize
             scanLogAdapter.refreshFontSize()
             updateOutputPathLabel()
@@ -170,16 +170,14 @@ class MainActivity : AppCompatActivity() {
                 make         = data.getStringExtra(AddAssetActivity.EXTRA_MAKE) ?: "",
                 model        = data.getStringExtra(AddAssetActivity.EXTRA_MODEL) ?: "",
                 serial       = data.getStringExtra(AddAssetActivity.EXTRA_SERIAL) ?: "",
-                isNew        = true,
-                userInitials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: "",
-                qaLocation   = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
+                isNew        = true
             )
             saveAsset(asset)
             sendViaBluetooth(assetNumber)
             showSnackbar(
                 "✓ NEW - '$assetNumber' added successfully",
                 android.R.color.holo_green_dark,
-                prefs.getInt(KEY_SNACKBAR_DURATION, 3000)
+                prefs.getInt(KEY_SNACKBAR_DURATION, 5000)
             )
         }
         // Always restore focus after returning from Add Asset screen
@@ -189,7 +187,7 @@ class MainActivity : AppCompatActivity() {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        supportActionBar?.title = "Monash Health CEQA"
+        supportActionBar?.title = "MH CEQA"
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -225,8 +223,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        csvManager.ensureOutputFileReady()
-
         setupScanLog()
         setupTabs()
         setupClickListeners()
@@ -240,7 +236,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
+        if (::btManager.isInitialized)
+            prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
         try {
             unregisterReceiver(aclReceiver)
         } catch (_: IllegalArgumentException) {
@@ -249,6 +246,33 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        // If onCreate returned early (no session), nothing is initialised — skip all resume logic
+        if (!::btManager.isInitialized) return
+
+        // ── Auto-end session if the date has changed ──────────────────────────
+        // If the user left the app running overnight, end the session so they
+        // start fresh with a new session (and a new daily CSV file).
+        val savedDate = prefs.getString(SessionActivity.KEY_SESSION_DATE, null)
+        if (savedDate != null && savedDate != SessionActivity.todayDateString()) {
+            prefs.edit()
+                .putBoolean(SessionActivity.KEY_SESSION_ACTIVE, false)
+                .remove(SessionActivity.KEY_USER_INITIALS)
+                .remove(SessionActivity.KEY_QA_LOCATION)
+                .remove(SessionActivity.KEY_SESSION_DATE)
+                .apply()
+            connectJob?.cancel()
+            reconnectJob?.cancel()
+            stopReconnectPulse()
+            btManager.cancelConnect()
+            btManager.disconnect()
+            val intent = Intent(this, SessionActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+            finish()
+            return
+        }
 
         // Register ACL disconnect receiver for rapid disconnection detection
         val filter = IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED)
@@ -294,6 +318,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (!::btManager.isInitialized) return
         connectJob?.cancel()
         reconnectJob?.cancel()
         stopReconnectPulse()
@@ -308,6 +333,7 @@ class MainActivity : AppCompatActivity() {
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        if (!::binding.isInitialized) return
         if (hasFocus && binding.tabContentScan.visibility == View.VISIBLE) {
             binding.etSearch.requestFocus()
         }
@@ -364,7 +390,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupScanLog() {
         scanLog.addAll(csvManager.readSavedAssets())
-        val savedFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_LARGE)
+        val savedFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_MEDIUM)
         scanLogAdapter = ScanLogAdapter(scanLog, savedFontSize)
 
         binding.rvScanLog.apply {
@@ -431,12 +457,16 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
+                // Exit selection mode whenever the user switches tabs
+                if (scanLogAdapter.selectionMode) {
+                    scanLogAdapter.exitSelectionMode()
+                    binding.layoutSelectionBar.visibility = View.GONE
+                }
                 when (tab.position) {
                     0 -> {
                         binding.tabContentScan.visibility = View.VISIBLE
                         binding.tabContentLog.visibility = View.GONE
                     }
-
                     1 -> {
                         binding.tabContentScan.visibility = View.GONE
                         binding.tabContentLog.visibility = View.VISIBLE
@@ -455,11 +485,26 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        // Colour "End Session" red
+        menu.findItem(R.id.menu_end_session)?.let { item ->
+            val s = android.text.SpannableString(item.title)
+            s.setSpan(android.text.style.ForegroundColorSpan(
+                android.graphics.Color.parseColor("#EF5350")),
+                0, s.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+            item.title = s
+        }
+        // Wire End Session click directly
+        menu.findItem(R.id.menu_end_session)?.setOnMenuItemClickListener {
+            showEndSessionDialog()
+            true
+        }
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menu_end_session -> { showEndSessionDialog(); true }
+
             R.id.menu_change_csv -> {
                 manualCsvPickInProgress = true
                 pickCsvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
@@ -530,7 +575,6 @@ class MainActivity : AppCompatActivity() {
         binding.etSearch.filters = arrayOf(InputFilter.AllCaps())
 
         binding.btnSearch.setOnClickListener { triggerSearch() }
-        binding.btnEndSession.setOnClickListener { showEndSessionDialog() }
 
         // Handle software Search / Done IME button
         binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
@@ -693,12 +737,10 @@ class MainActivity : AppCompatActivity() {
             showFoundBanner(record.assetNumber, alreadyLogged = true, routinePeriod = record.routinePeriod)
         } else {
             val asset = Asset(
-                assetNumber  = record.assetNumber,
-                department   = record.department,
-                isNew        = false,
-                routinePeriod = record.routinePeriod,
-                userInitials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: "",
-                qaLocation   = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
+                assetNumber   = record.assetNumber,
+                department    = record.department,
+                isNew         = false,
+                routinePeriod = record.routinePeriod
             )
             saveAsset(asset)
             showFoundBanner(record.assetNumber, alreadyLogged = false, routinePeriod = record.routinePeriod)
@@ -1000,7 +1042,7 @@ class MainActivity : AppCompatActivity() {
             }
         } else base
 
-        val duration = prefs.getInt(KEY_SNACKBAR_DURATION, 3000)
+        val duration = prefs.getInt(KEY_SNACKBAR_DURATION, 5000)
         showSnackbar(
             message,
             if (alreadyLogged) android.R.color.holo_orange_dark
@@ -1018,13 +1060,17 @@ class MainActivity : AppCompatActivity() {
                     .putBoolean(SessionActivity.KEY_SESSION_ACTIVE, false)
                     .remove(SessionActivity.KEY_USER_INITIALS)
                     .remove(SessionActivity.KEY_QA_LOCATION)
+                    .remove(SessionActivity.KEY_SESSION_DATE)
                     .apply()
                 connectJob?.cancel()
                 reconnectJob?.cancel()
                 stopReconnectPulse()
                 btManager.cancelConnect()
                 btManager.disconnect()
-                startActivity(Intent(this, SessionActivity::class.java))
+                val intent = Intent(this, SessionActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
                 finish()
             }
             .setNegativeButton("Cancel", null)
@@ -1034,11 +1080,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateSessionInfoLabel() {
         val initials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: ""
         val location = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
-        if (initials.isNotEmpty() || location.isNotEmpty()) {
-            binding.tvSessionInfo.text = "👤 $initials  📍 $location"
-            binding.layoutSessionInfo.visibility = View.VISIBLE
+        if (initials.isNotEmpty()) {
+            val locationPart = if (location.isNotEmpty()) "  📍 $location" else ""
+            binding.tvSessionInfo.text = "👤 $initials$locationPart"
+            binding.tvSessionInfo.visibility = View.VISIBLE
         } else {
-            binding.layoutSessionInfo.visibility = View.GONE
+            binding.tvSessionInfo.visibility = View.GONE
         }
     }
 

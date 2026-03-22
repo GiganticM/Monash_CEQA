@@ -12,14 +12,13 @@ package org.monash.ceqa.models
  * @param isNew        True when the asset was not found in the source CSV
  */
 data class Asset(
-    val assetNumber:   String,
-    val department:    String  = "",
-    val make:          String  = "",
-    val model:         String  = "",
-    val serial:        String  = "",
-    val timestamp:     String  = "",
-    val isNew:         Boolean = false,
-    val routinePeriod: Int     = 0,
-    val userInitials:  String  = "",
-    val qaLocation:    String  = ""
+    val assetNumber:    String,
+    val department:     String  = "",
+    val make:           String  = "",
+    val model:          String  = "",
+    val serial:         String  = "",
+    val timestamp:      String  = "",
+    val isNew:          Boolean = false,
+    val routinePeriod:  Int     = 0,
+    val isSessionHeader: Boolean = false
 )

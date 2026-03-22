@@ -69,7 +69,11 @@ class ScanLogAdapter(
     }
 
     fun getSelectedAssetNumbers(): Set<String> =
-        selectedPositions.mapNotNull { assets.getOrNull(it)?.assetNumber }.toSet()
+        selectedPositions
+            .mapNotNull { assets.getOrNull(it) }
+            .filter { !it.isSessionHeader }  // session rows are never deletable
+            .map { it.assetNumber }
+            .toSet()
 
     val selectedCount: Int get() = selectedPositions.size
 
@@ -97,6 +101,29 @@ class ScanLogAdapter(
         holder.tvAssetNumber.textSize = fontSizeSp
         holder.tvType.textSize        = (fontSizeSp - 2f).coerceAtLeast(8f)
         holder.tvDetails.textSize     = (fontSizeSp - 1f).coerceAtLeast(8f)
+
+        // ── Session header row ─────────────────────────────────────────────────
+        if (asset.isSessionHeader) {
+            holder.cbSelect.visibility = View.GONE
+            holder.viewDot.visibility  = View.GONE
+            holder.itemView.setOnLongClickListener(null)
+            holder.itemView.setOnClickListener(null)
+            holder.itemView.isLongClickable = false
+
+            val location = if (asset.department.isNotBlank()) "\n📍 ${asset.department}" else ""
+            holder.tvTime.text = "[${asset.timestamp.ifEmpty { "--:--:--" }}]"
+            holder.tvTime.setTextColor(Color.parseColor("#80CBC4"))
+            holder.tvAssetNumber.text = "👤 ${asset.assetNumber}$location"
+            holder.tvAssetNumber.isSingleLine = false
+            holder.tvAssetNumber.setTextColor(Color.parseColor("#80CBC4"))
+            holder.tvType.text = "SESSION"
+            holder.tvType.setTextColor(Color.parseColor("#4DB6AC"))
+            holder.tvDetails.visibility = View.GONE
+            holder.itemView.setBackgroundColor(Color.parseColor("#0D1F1E"))
+            return
+        }
+
+        // ── Normal scan row ────────────────────────────────────────────────────
 
         // Checkbox
         if (selectionMode) {

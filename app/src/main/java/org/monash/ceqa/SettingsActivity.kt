@@ -44,7 +44,6 @@ class SettingsActivity : AppCompatActivity() {
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
             csvManager.saveOutputFolderUri(uri)
-            csvManager.ensureOutputFileReady()
             binding.tvCurrentFolder.text = csvManager.outputFilePath
         }
     }
@@ -64,6 +63,22 @@ class SettingsActivity : AppCompatActivity() {
 
         // ── Scanner name ─────────────────────────────────────────────────────
         binding.etScannerName.setText(csvManager.scannerName)
+        binding.etScannerName.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val preview = s.toString().trim().lowercase().replace(" ", "_")
+                val previewName = CsvManager.fileNameForDate(scannerPrefix = preview)
+                val folderUri = csvManager.loadOutputFolderUri()
+                val folderPart = if (folderUri != null) {
+                    val folder = androidx.documentfile.provider.DocumentFile.fromTreeUri(this@SettingsActivity, folderUri)
+                    folder?.name ?: folderUri.lastPathSegment ?: "?"
+                } else {
+                    java.io.File(getExternalFilesDir(null), "").absolutePath
+                }
+                binding.tvCurrentFolder.text = "$folderPart/$previewName"
+            }
+        })
 
         // ── Output folder ────────────────────────────────────────────────────
         binding.tvCurrentFolder.text = csvManager.outputFilePath
@@ -72,7 +87,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // ── Font size ────────────────────────────────────────────────────────
-        val savedFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_LARGE)
+        val savedFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_MEDIUM)
         when (savedFontSize) {
             ScanLogAdapter.FONT_SIZE_SMALL -> binding.rbFontSmall.isChecked = true
             ScanLogAdapter.FONT_SIZE_LARGE -> binding.rbFontLarge.isChecked = true
@@ -80,7 +95,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         // ── Snackbar duration slider ─────────────────────────────────────────
-        val currentSecs = prefs.getInt(KEY_SNACKBAR_DURATION, 3000) / 1000f
+        val currentSecs = prefs.getInt(KEY_SNACKBAR_DURATION, 5000) / 1000f
         binding.sliderSnackbarDuration.value = currentSecs.coerceIn(2f, 10f)
         binding.tvSnackbarDurationLabel.text = "${binding.sliderSnackbarDuration.value.toInt()}s"
         binding.sliderSnackbarDuration.addOnChangeListener { _, value, _ ->
@@ -119,8 +134,6 @@ class SettingsActivity : AppCompatActivity() {
         // Snackbar duration
         val newDuration = (binding.sliderSnackbarDuration.value * 1000).toInt()
         prefs.edit().putInt(KEY_SNACKBAR_DURATION, newDuration).apply()
-
-        csvManager.ensureOutputFileReady()
 
         setResult(Activity.RESULT_OK)
         finish()

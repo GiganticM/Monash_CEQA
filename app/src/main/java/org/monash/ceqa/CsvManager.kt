@@ -29,7 +29,7 @@ class CsvManager(private val context: Context) {
 
     companion object {
         // location removed, department is unified
-        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "qa_location")
+        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "row_type")
 
         private const val PREFS_NAME          = "asset_scanner_prefs"
         private const val KEY_SOURCE_URI      = "source_uri"
@@ -169,16 +169,39 @@ class CsvManager(private val context: Context) {
 
     // Output CSV
 
-    fun ensureOutputFileReady() {
+    /**
+     * Appends a blank separator row (if the file already has prior content),
+     * then a session header row. Also creates the file and writes the CSV header
+     * if this is the first session of the day - file creation is intentionally
+     * deferred until a session actually starts.
+     */
+    fun appendSessionHeader(initials: String, location: String) {
+        val timestamp = TIME_FORMAT.format(Date())
+
+        // Create file and write CSV header if it doesn't exist yet
         val doc = getOutputDocumentFile(create = true) ?: return
-        // Write header only if the file is empty / newly created
         val isEmpty = context.contentResolver.openInputStream(doc.uri)?.use {
             it.available() == 0
         } ?: true
-
         if (isEmpty) {
             context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
                 CSVWriter(OutputStreamWriter(os)).use { it.writeNext(OUTPUT_HEADERS) }
+            }
+        }
+
+        // Check if file already has content beyond the header row
+        val hasContent = context.contentResolver.openInputStream(doc.uri)?.use { inputStream ->
+            CSVReader(InputStreamReader(inputStream)).use { reader ->
+                var count = 0
+                while (reader.readNext() != null) count++
+                count > 1
+            }
+        } ?: false
+
+        context.contentResolver.openOutputStream(doc.uri, "wa")?.use { os ->
+            CSVWriter(OutputStreamWriter(os)).use { writer ->
+                if (hasContent) writer.writeNext(arrayOf("", "", "", "", "", "", ""))
+                writer.writeNext(arrayOf(initials, location, "", "", "", timestamp, "session"))
             }
         }
     }
@@ -198,8 +221,7 @@ class CsvManager(private val context: Context) {
                     saved.model,
                     saved.serial,
                     saved.timestamp,
-                    saved.userInitials,
-                    saved.qaLocation
+                    ""
                 ))
             }
         }
@@ -216,17 +238,31 @@ class CsvManager(private val context: Context) {
                 while (reader.readNext().also { line = it } != null) {
                     if (isHeader) { isHeader = false; continue }
                     val row = line ?: continue
-                    assets.add(Asset(
-                        assetNumber  = row.getOrElse(0) { "" }.uppercase(),
-                        department   = row.getOrElse(1) { "" },
-                        make         = row.getOrElse(2) { "" },
-                        model        = row.getOrElse(3) { "" },
-                        serial       = row.getOrElse(4) { "" },
-                        timestamp    = row.getOrElse(5) { "" },
-                        isNew        = row.getOrElse(2) { "" }.isNotBlank() || row.getOrElse(3) { "" }.isNotBlank(),
-                        userInitials = row.getOrElse(6) { "" },
-                        qaLocation   = row.getOrElse(7) { "" }
-                    ))
+
+                    // Skip blank separator rows
+                    if (row.all { it.isBlank() }) continue
+
+                    // Use the row_type column (col 6) for reliable detection
+                    val isSessionHeader = row.getOrElse(6) { "" }.equals("session", ignoreCase = true)
+
+                    if (isSessionHeader) {
+                        assets.add(Asset(
+                            assetNumber     = row.getOrElse(0) { "" },   // initials
+                            department      = row.getOrElse(1) { "" },   // location
+                            timestamp       = row.getOrElse(5) { "" },
+                            isSessionHeader = true
+                        ))
+                    } else {
+                        assets.add(Asset(
+                            assetNumber  = row.getOrElse(0) { "" }.uppercase(),
+                            department   = row.getOrElse(1) { "" },
+                            make         = row.getOrElse(2) { "" },
+                            model        = row.getOrElse(3) { "" },
+                            serial       = row.getOrElse(4) { "" },
+                            timestamp    = row.getOrElse(5) { "" },
+                            isNew        = row.getOrElse(2) { "" }.isNotBlank() || row.getOrElse(3) { "" }.isNotBlank()
+                        ))
+                    }
                 }
             }
         }

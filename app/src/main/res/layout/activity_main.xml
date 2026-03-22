@@ -7,43 +7,6 @@
     android:orientation="vertical"
     android:fitsSystemWindows="true">
 
-    <!-- ── Session info bar — shown when a session is active ────────────── -->
-    <LinearLayout
-        android:id="@+id/layoutSessionInfo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="#1A237E"
-        android:paddingStart="14dp"
-        android:paddingEnd="4dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tvSessionInfo"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:fontFamily="sans-serif-medium" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnEndSession"
-            style="@style/Widget.MaterialComponents.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="End Session"
-            android:textColor="#FF8A80"
-            android:textSize="11sp"
-            android:minWidth="0dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
-
-    </LinearLayout>
-
     <!-- ── Tab bar ─────────────────────────────────────────────────────── -->
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tabLayout"
@@ -108,6 +71,15 @@
                         android:orientation="vertical">
 
                         <TextView
+                            android:id="@+id/tvSessionInfo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="#666666"
+                            android:textSize="13sp"
+                            android:layout_marginBottom="4dp"
+                            android:visibility="gone" />
+
+                        <TextView
                             android:id="@+id/tvCsvStatus"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -155,8 +127,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:background="#E0E0E0"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="10dp" />
 
                 <!-- Search label -->
                 <TextView
@@ -164,7 +136,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Enter or Scan Asset Number"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
                     android:textStyle="bold"
                     android:textColor="#1A1A2E" />
 
@@ -175,7 +147,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="Asset Number, S/N or Barcode"
-                    android:layout_marginTop="12dp">
+                    android:layout_marginTop="8dp">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etSearch"
@@ -183,7 +155,7 @@
                         android:layout_height="wrap_content"
                         android:inputType="textCapCharacters"
                         android:imeOptions="actionSearch"
-                        android:textSize="18sp" />
+                        android:textSize="16sp" />
 
                 </com.google.android.material.textfield.TextInputLayout>
 
@@ -193,8 +165,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Search"
-                    android:textSize="16sp"
-                    android:layout_marginTop="12dp" />
+                    android:textSize="14sp"
+                    android:layout_marginTop="8dp" />
 
             </LinearLayout>
 
