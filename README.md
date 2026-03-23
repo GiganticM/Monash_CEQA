@@ -1,4 +1,4 @@
-# MH CEQA — Android Asset Scanner (Kotlin)
+# MH CEQA - Android Asset Scanner (Kotlin)
 
 An Android app built for **Monash Health CEQA** to perform QA scanning of medical assets. Operators scan asset IDs against a reference CSV, log found assets in real time, record new ones manually, and optionally transmit scan data to a Bluetooth SPP device.
 
@@ -15,12 +15,12 @@ An Android app built for **Monash Health CEQA** to perform QA scanning of medica
 |---|---|
 | Session login | Operator initials + QA location captured before scanning begins |
 | Source CSV lookup | Matches asset number, serial number, or barcode against reference database |
-| Fast in-memory lookup | `HashMap` — O(1) lookups against 40k+ records |
-| Hardware barcode scanner support | `dispatchKeyEvent` buffer — works on Android 9+ without soft keyboard |
+| Fast in-memory lookup | `HashMap` - O(1) lookups against 40k+ records |
+| Hardware barcode scanner support | `dispatchKeyEvent` buffer - works on Android 9+ without soft keyboard |
 | Bluetooth SPP auto-reconnect | Daemon reader thread detects disconnect; 10-second retry loop with pulse animation |
 | Real-time scan log (LOG tab) | Terminal-style RecyclerView with FOUND / NEW badges and session headers |
 | Sticker colour indicator | Yellow (12mth) / White (24mth) / Green (60mth) dot per routine period |
-| New asset entry screen | Department, Make, Model, Serial — with unsaved-changes warning on back |
+| New asset entry screen | Department, Make, Model, Serial - with unsaved-changes warning on back |
 | Output CSV with session rows | Session header rows distinguish scanner sessions within a single day's file |
 | Log record deletion | Long-press to enter selection mode; delete selected rows from CSV and log |
 | Configurable settings | Font size, snackbar duration, output folder, scanner name prefix |
@@ -87,7 +87,7 @@ AssetScanner/
 ## Setup
 
 1. Open in **Android Studio** (Hedgehog or later)
-2. Sync Gradle — key dependencies in `app/build.gradle`:
+2. Sync Gradle - key dependencies in `app/build.gradle`:
    ```gradle
    implementation libs.material
    implementation libs.androidx.appcompat
@@ -104,22 +104,22 @@ AssetScanner/
 ## How to Use
 
 ### Starting a session
-1. Launch the app — the **Session screen** appears
+1. Launch the app - the **Session screen** appears
 2. Enter your **initials** (required, max 15 chars, auto-uppercased)
-3. Enter your **QA location** (e.g. `MHCE`) — optional, a confirmation dialog appears if blank
-4. Tap **Start Session** — a session header row is written to the output CSV
+3. Enter your **QA location** (e.g. `MHCE`) - optional, a confirmation dialog appears if blank
+4. Tap **Start Session** - a session header row is written to the output CSV
 
 ### Loading the asset reference list
 - Tap **⋮ menu → 📂 Load Asset List (.csv)**
-- Pick your `.csv` file — the app reads columns: `asset_number`, `serial`, `department`, `barcode`, `routine_period`
+- Pick your `.csv` file - the app reads columns: `asset_number`, `serial`, `department`, `barcode`, `routine_period`
 - Status shows: `✓ Loaded 12345 records`
 - The URI is remembered and reloads automatically on next launch
 
 ### Scanning assets
-- Type or scan into the search field — hardware scanners work via `dispatchKeyEvent`
+- Type or scan into the search field - hardware scanners work via `dispatchKeyEvent`
 - Tap **Search** or press Enter
-- **Found:** green snackbar `✓ FOUND — MH12345 logged`, entry appears in LOG tab
-- **Already logged:** orange snackbar `⚠ Already logged — MH12345`
+- **Found:** green snackbar `✓ FOUND - MH12345 logged`, entry appears in LOG tab
+- **Already logged:** orange snackbar `⚠ Already logged - MH12345`
 - **Not found:** opens **Add New Asset** screen for manual entry
 
 ### LOG tab
@@ -167,9 +167,9 @@ MH12346,ED,,,, 08:06:44,
 NEW001,WARD4,GE,Monitor,SN-GE-001,08:10:02,
 ```
 
-- **Session rows** — `row_type = session`; `asset_number` = operator initials, `department` = location
-- **Found asset rows** — `row_type` blank; only `asset_number`, `department`, `timestamp` populated
-- **New asset rows** — all columns populated from the Add Asset screen
+- **Session rows** - `row_type = session`; `asset_number` = operator initials, `department` = location
+- **Found asset rows** - `row_type` blank; only `asset_number`, `department`, `timestamp` populated
+- **New asset rows** - all columns populated from the Add Asset screen
 
 ---
 
@@ -188,7 +188,7 @@ NEW001,WARD4,GE,Monitor,SN-GE-001,08:10:02,
 
 - Connects as **master** to slave device (HC-05, HC-06, or any SPP device)
 - SPP UUID: `00001101-0000-1000-8000-00805F9B34FB`
-- Line terminator: `\r` (carriage return only) — edit `LINE_TERMINATOR` in `BluetoothSppManager.kt`
+- Line terminator: `\r` (carriage return only) - edit `LINE_TERMINATOR` in `BluetoothSppManager.kt`
 - Fallback to `createRfcommSocket(1)` if standard UUID connection fails
 - Reader thread detects disconnection within 1–2 seconds on all Android versions
 

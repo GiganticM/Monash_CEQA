@@ -12,7 +12,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode 1
-        versionName "1.6.1"
+        versionName "1.6.2"
     }
 
     buildTypes {
@@ -40,7 +40,7 @@ dependencies {
     implementation libs.androidx.activity.ktx
     implementation libs.androidx.documentfile
 
-    // OpenCSV for robust CSV parsing
+    // OpenCSV for CSV parsing
     implementation libs.opencsv
     implementation libs.androidx.recyclerview
 }

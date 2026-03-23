@@ -34,7 +34,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var prefs: SharedPreferences
     private lateinit var csvManager: CsvManager
 
-    // Folder picker — registered here so the live label updates correctly
+    // Folder picker - registered here so the live label updates correctly
     private val pickOutputFolderLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->

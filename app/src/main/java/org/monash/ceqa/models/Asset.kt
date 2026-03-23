@@ -10,6 +10,8 @@ package org.monash.ceqa.models
  * @param serial       User-entered serial    - NEW assets only
  * @param timestamp    HH:mm:ss captured at write time
  * @param isNew        True when the asset was not found in the source CSV
+ * @param routinePeriod  The QA period (from source CSV)
+ * @param isSessionHeader Defines if this line is session information only
  */
 data class Asset(
     val assetNumber:    String,

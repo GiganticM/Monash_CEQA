@@ -55,7 +55,7 @@ class SessionActivity : AppCompatActivity() {
         binding = ActivitySessionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Settings icon — floated ImageButton, no toolbar needed
+        // Settings icon - floated ImageButton, no toolbar needed
         binding.btnSettings.setOnClickListener {
             settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
         }

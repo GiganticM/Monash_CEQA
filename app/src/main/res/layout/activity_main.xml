@@ -185,7 +185,7 @@
         android:background="#0B0E0B"
         android:visibility="gone">
 
-        <!-- Selection mode action bar — hidden until long-press activates selection -->
+        <!-- Selection mode action bar - hidden until long-press activates selection -->
         <LinearLayout
             android:id="@+id/layoutSelectionBar"
             android:layout_width="match_parent"

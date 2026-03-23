@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
     private val scanLog = mutableListOf<Asset>()
     private var lookupMap: Map<String, List<CsvManager.SourceRecord>> = emptyMap()
 
-    /** True when the SCAN tab is the active tab — set synchronously in onTabSelected
+    /** True when the SCAN tab is the active tab - set synchronously in onTabSelected
      *  so dispatchKeyEvent never races against the layout visibility pass. */
     private var isScanTabActive = true
 
@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
     /** Always dismiss this before showing a new snackbar so they never overlap. */
     private var activeSnackbar: Snackbar? = null
 
-    /** Buffer for hardware scanner input — flushed to etSearch only when Enter arrives,
+    /** Buffer for hardware scanner input - flushed to etSearch only when Enter arrives,
      *  avoiding race conditions with view initialisation on first scan after launch/resume. */
     private val scanBuffer = StringBuilder()
 
@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         csvManager = CsvManager(this)
         btManager = BluetoothSppManager(this)
         btManager.onDisconnected = {
-            // Called on IO thread — post to main thread
+            // Called on IO thread - post to main thread
             runOnUiThread {
                 updateBtStatusIndicator()
                 startAutoReconnect()
@@ -247,7 +247,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        // If onCreate returned early (no session), nothing is initialised — skip all resume logic
+        // If onCreate returned early (no session), nothing is initialised - skip all resume logic
         if (!::btManager.isInitialized) return
 
         // ── Auto-end session if the date has changed ──────────────────────────
@@ -284,7 +284,7 @@ class MainActivity : AppCompatActivity() {
         // ── Restore source CSV if not already loaded ──────────────────────────
         // lookupMap is in-memory; if the process was not killed it's already
         // populated and we skip the reload entirely (no flicker, no status change).
-        // Also skip if a manual CSV pick is in progress — the picker result will
+        // Also skip if a manual CSV pick is in progress - the picker result will
         // handle the load itself so we don't show the wrong "Reloading" message.
         if (lookupMap.isEmpty() && !manualCsvPickInProgress) {
             csvManager.loadSavedSourceUri()?.let { savedUri ->
@@ -312,7 +312,7 @@ class MainActivity : AppCompatActivity() {
 
         // Move focus to the container so etSearch has no active InputConnection
         // on resume. This matches the tab-switch state where the first scan works
-        // correctly — chars go via dispatchKeyEvent buffer rather than InputConnection.
+        // correctly - chars go via dispatchKeyEvent buffer rather than InputConnection.
         binding.tabContentScan.requestFocus()
     }
 
@@ -329,7 +329,7 @@ class MainActivity : AppCompatActivity() {
     /**
      * Focuses etSearch the moment the window is ready so InputConnection is
      * active before the first scan. Immediately hides the soft keyboard so it
-     * doesn't appear — the hardware barcode scanner doesn't need it.
+     * doesn't appear - the hardware barcode scanner doesn't need it.
      */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -376,7 +376,7 @@ class MainActivity : AppCompatActivity() {
             event.unicodeChar > 0 -> {
                 // Buffer the character for the Enter handler to collect.
                 // Also pass to super so InputConnection receives it when etSearch
-                // is focused — this handles soft keyboard input correctly.
+                // is focused - this handles soft keyboard input correctly.
                 // The Enter handler combines both buffer + field to avoid duplicates
                 // when both paths deliver the same character.
                 scanBuffer.append(event.getUnicodeChar(0).toChar().uppercaseChar())
@@ -390,6 +390,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupScanLog() {
         scanLog.addAll(csvManager.readSavedAssets())
+
+        // Bug fix: the session header is written async in SessionActivity, so it may
+        // not be in the CSV yet when we read it here. If the last entry isn't a session
+        // header matching the current session, inject one immediately from prefs.
+        val initials = prefs.getString(SessionActivity.KEY_USER_INITIALS, "") ?: ""
+        val location = prefs.getString(SessionActivity.KEY_QA_LOCATION, "") ?: ""
+        if (initials.isNotEmpty()) {
+            val lastEntry = scanLog.lastOrNull()
+            val alreadyPresent = lastEntry?.isSessionHeader == true &&
+                lastEntry.assetNumber.equals(initials, ignoreCase = true) &&
+                lastEntry.department.equals(location, ignoreCase = true)
+            if (!alreadyPresent) {
+                scanLog.add(Asset(
+                    assetNumber     = initials,
+                    department      = location,
+                    isSessionHeader = true
+                ))
+            }
+        }
         val savedFontSize = prefs.getFloat(KEY_FONT_SIZE, ScanLogAdapter.FONT_SIZE_MEDIUM)
         scanLogAdapter = ScanLogAdapter(scanLog, savedFontSize)
 
@@ -462,6 +481,10 @@ class MainActivity : AppCompatActivity() {
                     scanLogAdapter.exitSelectionMode()
                     binding.layoutSelectionBar.visibility = View.GONE
                 }
+
+                scanBuffer.clear()
+                binding.etSearch.setText("")
+
                 when (tab.position) {
                     0 -> {
                         binding.tabContentScan.visibility = View.VISIBLE
@@ -990,7 +1013,7 @@ class MainActivity : AppCompatActivity() {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, 6
                     )
-                    pivotX = 0f   // anchor left — bar drains from right to left
+                    pivotX = 0f   // anchor left - bar drains from right to left
                 }
                 snackLayout.addView(countdownBar)
 
@@ -1121,7 +1144,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateEmptyState() {
-        val hasItems = scanLogAdapter.recordCount() > 0
+        val hasItems = scanLog.isNotEmpty()
         binding.rvScanLog.visibility = if (hasItems) View.VISIBLE else View.GONE
         binding.tvLogEmpty.visibility = if (hasItems) View.GONE else View.VISIBLE
     }

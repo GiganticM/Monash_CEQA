@@ -101,7 +101,7 @@
 
     </ScrollView>
 
-    <!-- Floating settings icon — top-right corner, no toolbar needed -->
+    <!-- Floating settings icon - top-right corner, no toolbar needed -->
     <ImageButton
         android:id="@+id/btnSettings"
         android:layout_width="48dp"

@@ -203,7 +203,7 @@ class ScanLogAdapter(
         notifyItemInserted(assets.size - 1)
     }
 
-    fun recordCount(): Int = assets.size
+    fun recordCount(): Int = assets.count { !it.isSessionHeader }
 
     fun refreshFontSize() = notifyDataSetChanged()
 }

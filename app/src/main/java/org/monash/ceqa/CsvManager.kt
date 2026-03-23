@@ -41,8 +41,8 @@ class CsvManager(private val context: Context) {
 
         /**
          * Builds the output filename.
-         * If [scannerPrefix] is non-blank (e.g. "scanner_1") the result is
-         * "scanner_1_qa_assets_26-02-2026.csv", otherwise "qa_assets_26-02-2026.csv".
+         * If [scannerPrefix] is non-blank (e.g. "1") the result is
+         * "1_qa_assets_26-02-2026.csv", otherwise "qa_assets_26-02-2026.csv".
          */
         fun fileNameForDate(date: Date = Date(), scannerPrefix: String = ""): String {
             val datePart = "qa_assets_${DATE_FORMAT.format(date)}.csv"
@@ -57,7 +57,7 @@ class CsvManager(private val context: Context) {
 
     // Scanner name
 
-    /** e.g. "scanner_1" - used as a filename prefix. Blank means no prefix. */
+    /** e.g. "1" - used as a filename prefix. Blank means no prefix. */
     var scannerName: String
         get()      = prefs.getString(KEY_SCANNER_NAME, "") ?: ""
         set(value) = prefs.edit { putString(KEY_SCANNER_NAME, value) }

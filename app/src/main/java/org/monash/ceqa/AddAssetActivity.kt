@@ -92,10 +92,10 @@ class AddAssetActivity : AppCompatActivity() {
         check(binding.etSerial.text.toString(),     "Serial Number")
 
         return if (missingFields.isEmpty()) {
-            true  // All filled - proceed to save
+            true
         } else {
             showIncompleteDialog(missingFields)
-            false // Wait for user choice in the dialog
+            false
         }
     }
 
@@ -126,12 +126,12 @@ class AddAssetActivity : AppCompatActivity() {
             putExtra(EXTRA_MODEL,        binding.etModel.text.toString().trim())
             putExtra(EXTRA_SERIAL,       binding.etSerial.text.toString().trim())
         }
-        setResult(Activity.RESULT_OK, resultIntent)
+        setResult(RESULT_OK, resultIntent)
         finish()
     }
 
     private fun cancelAndExit() {
-        setResult(Activity.RESULT_CANCELED)
+        setResult(RESULT_CANCELED)
         finish()
     }
 

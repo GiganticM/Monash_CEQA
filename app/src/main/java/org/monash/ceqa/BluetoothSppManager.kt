@@ -70,7 +70,7 @@ class BluetoothSppManager(private val context: Context) {
     /** Called on the IO thread when the connection drops unexpectedly. */
     var onDisconnected: (() -> Unit)? = null
 
-    /** Background thread that blocks on InputStream.read() — detects disconnection
+    /** Background thread that blocks on InputStream.read() - detects disconnection
      *  within 1-2 seconds on any Android version, far faster than ACL broadcast on API 33+. */
     @Volatile private var readerThread: Thread? = null
 
@@ -86,7 +86,7 @@ class BluetoothSppManager(private val context: Context) {
                     if (n < 0) break   // stream ended cleanly
                 }
             } catch (_: IOException) {
-                // Socket closed — either by us (disconnect/cancelConnect) or remote drop
+                // Socket closed - either by us (disconnect/cancelConnect) or remote drop
             }
             // Only fire callback if this was an unexpected drop (socket still set = we didn't close it)
             if (socket != null) {
