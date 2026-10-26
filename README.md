@@ -1,220 +1,277 @@
-# MH CEQA - Android Asset Scanner (Kotlin)
+# MH CEQA - Android Asset Scanner
 
-An Android app built for **Monash Health CEQA** to perform QA scanning of medical assets. Operators scan asset IDs against a reference CSV, log found assets in real time, record new ones manually, and optionally transmit scan data to a Bluetooth SPP device.
+A rugged Android barcode and asset inspection terminal application built for **Clinical Engineering Quality Assurance (CEQA)**. Designed specifically for handheld mobile terminals (e.g. ScanSKU) and mobile Android devices, the application provides high-speed barcode scanning against large asset reference databases (40k+ records), dual-mode QA and Inspection workflows, hardware scanner broadcast integration, asset condition scoring, Bluetooth SPP transmission, and automated Google Drive cloud synchronization.
 
 - **Package:** `me.rxue.mhceqa`
-- **Min SDK:** 26 (Android 8.0)  
-- **Target SDK:** 36  
-- **Version:** 1.5.2
+- **Current Version:** `2.0` (versionCode 3)
+- **Min SDK:** 26 (Android 8.0)
+- **Target SDK:** 36 (Android 14+)
+- **Architecture:** Jetpack Compose + Kotlin Coroutines + Material 3
 
 ---
 
-## Features
+## What's New in Version 2.0
 
-| Feature | Detail |
-|---|---|
-| Session login | Operator initials + QA location captured before scanning begins |
-| Source CSV lookup | Matches asset number, serial number, or barcode against reference database |
-| Fast in-memory lookup | `HashMap` - O(1) lookups against 40k+ records |
-| Hardware barcode scanner support | `dispatchKeyEvent` buffer - works on Android 9+ without soft keyboard |
-| Bluetooth SPP auto-reconnect | Daemon reader thread detects disconnect; 10-second retry loop with pulse animation |
-| Real-time scan log (LOG tab) | Terminal-style RecyclerView with FOUND / NEW badges and session headers |
-| Sticker colour indicator | Yellow (12mth) / White (24mth) / Green (60mth) dot per routine period |
-| New asset entry screen | Department, Make, Model, Serial - with unsaved-changes warning on back |
-| Output CSV with session rows | Session header rows distinguish scanner sessions within a single day's file |
-| Log record deletion | Long-press to enter selection mode; delete selected rows from CSV and log |
-| Configurable settings | Font size, snackbar duration, output folder, scanner name prefix |
-| Auto end-of-day session close | Session automatically ends if the app is opened on a new date |
+* **Inspection Only (IO) Mode:** Specialized inspection session mode with asset condition scoring (`-2`, `-1`, `0`, `+1`, `+2`).
+* **Condition Scoring Workflow:**
+  * First scan processes and logs the asset as found.
+  * Second scan triggers a touch-friendly Compose dialog to assign or update the condition score.
+  * Integrated scoring controls on the New Asset registration screen.
+  * Scores are persisted to output CSV files while keeping the operator LOG tab clean and distraction-free.
+* **Dirty-Data / Ambiguity Filter:** Safeguard against uncleaned reference databases. Scans matching more than 5 distinct assets (such as generic `"barcode"` labels) are rejected with a warning dialog.
+* **Dual-File CSV Architecture & Google Drive Upload:**
+  * Clean separation of standard scans and newly registered assets (`_NEW.csv`).
+  * Cloud sync automatically pairs and uploads both files together with hash-based change detection and retry handling.
+  * Automatic local archiving upon session completion.
+* **Source Asset Cloud Update:** Background checks and silent updates for master asset lists hosted on Google Drive.
+* **Enhanced Log Experience:** Reverse chronological sorting, interactive expand/collapse for new asset specs (Department, Make, Model, S/N), and zebra striping.
+* **Modern Jetpack Compose UI:** Complete modernization of UI screens, minimalist Monash Health branding, and fast startup with splash screen.
+
+---
+
+## Key Features
+
+### 1. Dual Working Sessions
+* **QA Mode:** Full medical asset Quality Assurance verification with routine inspection period indicators.
+* **Inspection Only (IO) Mode:** Rapid device condition rating workflow without unnecessary Bluetooth transmissions.
+* **Multi-Technician Support:** Supports single or grouped operator initials (e.g. `RX AS` or `RX`). Scans are merged chronologically across sessions for operators working together throughout the day.
+
+### 2. High-Performance Asset Lookup & Smart Filtering
+* **O(1) In-Memory Lookup:** Powered by indexed `HashMap` lookup against asset numbers, serial numbers, and barcodes.
+* **AssetGenius Barcode Parsing:** Automatically handles 35-character composite barcode strings.
+* **High-Ambiguity Rejection (> 5 Matches):** Rejects invalid or dirty barcode scans matching more than 5 distinct assets.
+* **Picker Dialog (2–5 Matches):** Displays an asset selection dialog when duplicate identifiers match a small set of records.
+
+### 3. Asset Condition Scoring (IO Session)
+* Assigns ratings across 5 standardized scores:
+  * `+2`: Excellent / Like New
+  * `+1`: Good / Minor Wear
+  * ` 0`: Standard / Operational
+  * `-1`: Fair / Needs Attention
+  * `-2`: Poor / Critical Defect
+* Accessible directly on second scan or upon manual creation of unlisted assets.
+
+### 4. Hardware Scanner & Broadcast Integration
+* Built-in hardware laser/imager integration via Android broadcast intents (`BarcodeHelper`).
+* Hardware scanning directly populates focused input fields on the **Add New Asset** screen (e.g. scanning the physical device Serial Number barcode into the S/N field).
+* Hardware key event fallback (`dispatchKeyEvent`) for keyboard wedge scanners.
+
+### 5. Automated Google Drive Cloud Sync
+* **Records Upload:** Dispatches daily output CSV files to Google Drive via secure Apps Script webhooks.
+* **Atomic Dual-File Sync:** Transmits both base records and `_NEW.csv` records simultaneously.
+* **Unmodified Bypass:** Skips sync operations when files have had no new scan modifications.
+* **Daily Archive Management:** Automatically archives daily output files into an `Archive/` directory once synced.
+* **Source Asset List Sync:** Periodically queries Google Drive folder ID for updated master asset lists.
+
+### 6. Bluetooth SPP Master Output
+* Connects to Bluetooth Classic Serial Port Profile (SPP) devices (e.g. test equipment, label printers).
+* Automatic reconnect daemon with exponential backoff and connection pulse indicators.
+* Automatically muted in IO session mode.
 
 ---
 
 ## App Flow
 
 ```
-Launch → SessionActivity (initials + location)
-              ↓  Start Session
-         MainActivity (SCAN tab / LOG tab)
-              ↓  Asset not found
-         AddAssetActivity (manual entry)
-              ↓  End Session
-         SessionActivity
+                     ┌────────────────────────┐
+                     │     Splash Screen      │
+                     └───────────┬────────────┘
+                                 ▼
+                     ┌────────────────────────┐
+                     │     Session Login      │
+                     │  (Initials + Location  │
+                     │    + QA / IO Mode)     │
+                     └───────────┬────────────┘
+                                 │ Start Session
+                                 ▼
+                     ┌────────────────────────┐
+        ┌───────────►│   Main Scanner Screen  │◄────────────┐
+        │            │  (SCAN Tab / LOG Tab)  │             │
+        │            └───────────┬────────────┘             │
+        │                        │                          │
+        │         ┌──────────────┴──────────────┐           │
+        │  Barcode Scan                  Search Submitted   │
+        │         │                             │           │
+        │         ▼                             ▼           │
+        │   ┌──────────────┐             ┌──────────────┐   │
+        │   │ > 5 Matches? ├─ Yes ──────►│ Reject Alert │───┤
+        │   └──────┬───────┘             └──────────────┘   │
+        │          │ No                                     │
+        │   ┌──────▼───────┐                                │
+        │   │ 2–5 Matches? ├─ Yes ──────►[ Asset Picker ]───┤
+        │   └──────┬───────┘                                │
+        │          │ Single Match                           │
+        │   ┌──────▼──────────────────┐                     │
+        │   │ Already Logged?         │                     │
+        │   │ (1st vs 2nd Scan in IO) │                     │
+        │   └──────┬──────────────────┘                     │
+        │          ├─ 1st Scan ─────────► Log Found ────────┤
+        │          │                      (Banner/CSV)      │
+        │          └─ 2nd Scan (IO) ────►[Condition Score]──┤
+        │                                 (-2 to +2 Dialog) │
+        │   Asset Not Found                                 │
+        │          ▼                                        │
+        │   ┌─────────────────────────┐                     │
+        │   │   Add New Asset Screen  │                     │
+        │   │ (Dept, Make, Model, S/N,│                     │
+        │   │    IO Condition Score)  ├─────────────────────┘
+        │   └─────────────────────────┘
+        │
+        │ End Session
+        ▼
+┌───────────────────────────────┐
+│ End Session & Cloud Sync      │
+│ (Google Drive Webhook Sync    │
+│  + Move to Archive Folder)    │
+└───────────────────────────────┘
 ```
+
+---
+
+## CSV Specifications
+
+### 1. Source Reference CSV (Read Only)
+Column order: `asset_number`, `serial_number`, `department`, `barcode`, `routine_period`
+
+```csv
+asset_number,serial_number,department,barcode,routine_period
+MH10001,SN-49102-A,Emergency,BC-10001,12
+MH10002,SN-88219-B,ICU,BC-10002,24
+MH10003,SN-33100-C,Biomedical,BC-10003,60
+```
+
+* **Routine Period Sticker Indicator:**
+  * `12`: Yellow sticker (12 months)
+  * `24`: White sticker (24 months)
+  * `60`: Green sticker (60 months)
+
+---
+
+### 2. Output CSV Files
+
+#### A. QA Session Files
+* **Found Assets File:** `[prefix_]qa_DD-MM-YYYY.csv`
+  ```csv
+  asset_number,department,timestamp,row_type
+  RX AS,MHCE,08:30:00,session
+  MH10001,Emergency,08:31:15,found
+  MH10002,ICU,08:35:42,found
+  ```
+* **New Assets File:** `[prefix_]qa_DD-MM-YYYY_NEW.csv` *(only generated if new assets are added)*
+  ```csv
+  asset_number,department,make,model,serial_number,timestamp,user_initials
+  NEW9001,Cardiology,Philips,MX450,SN-PH-9921,08:40:10,RX
+  ```
+
+#### B. Inspection Only (IO) Session Files
+* **IO Found Assets File:** `[prefix_]io_DD-MM-YYYY.csv`
+  ```csv
+  asset_number,department,timestamp,row_type,condition_score
+  RX,MHCE,09:00:00,session,
+  MH10001,Emergency,09:02:11,found,0
+  MH10002,ICU,09:05:40,found,+1
+  ```
+* **IO New Assets File:** `[prefix_]io_DD-MM-YYYY_NEW.csv`
+  ```csv
+  asset_number,department,make,model,serial_number,timestamp,user_initials,condition_score
+  NEW9002,Radiology,GE,Logiq E9,SN-GE-4102,09:12:33,RX,-1
+  ```
 
 ---
 
 ## Project Structure
 
 ```
-AssetScanner/
-├── build.gradle
-├── settings.gradle
-└── app/
-    ├── build.gradle
-    └── src/main/
-        ├── AndroidManifest.xml
-        ├── java/org/monash/ceqa/
-        │   ├── SessionActivity.kt        ← launcher; captures initials + location
-        │   ├── MainActivity.kt           ← SCAN + LOG tabs, BT, CSV search
-        │   ├── AddAssetActivity.kt       ← new asset manual entry screen
-        │   ├── CsvManager.kt             ← source CSV loading, output CSV read/write
-        │   ├── BluetoothSppManager.kt    ← BT Classic SPP connect/send/reconnect
-        │   ├── ScanLogAdapter.kt         ← RecyclerView adapter for LOG tab
-        │   ├── SettingsActivity.kt       ← font size, snackbar duration, output folder
-        │   └── models/
-        │       └── Asset.kt              ← data model (includes isSessionHeader flag)
-        └── res/
-            ├── layout/
-            │   ├── activity_session.xml
-            │   ├── activity_main.xml
-            │   ├── activity_add_asset.xml
-            │   ├── activity_settings.xml
-            │   └── item_scan_log.xml
-            ├── menu/
-            │   ├── main_menu.xml         ← End Session (red), CSV, BT, Settings
-            │   └── settings_menu.xml     ← Save action
-            ├── drawable/
-            │   ├── ic_app_logo.png
-            │   ├── ic_settings.xml
-            │   └── circle_dot.xml        ← sticker colour dot
-            └── values/
-                ├── strings.xml
-                ├── colors.xml
-                └── ic_launcher_background.xml
+Monash_CEQA/
+├── app/
+│   ├── build.gradle                              ← Gradle build config (v2.0, SDK 36)
+│   └── src/main/
+│       ├── AndroidManifest.xml                   ← App permissions & activities
+│       ├── java/me/rxue/mhceqa/
+│       │   ├── MainActivity.kt                   ← Main scanning engine & navigation
+│       │   ├── SessionActivity.kt                ← Session launcher & authentication
+│       │   ├── AddAssetActivity.kt               ← New asset registration activity
+│       │   ├── SettingsActivity.kt               ← App preferences & cloud settings
+│       │   ├── BarcodeHelper.kt                  ← ScanSKU broadcast intent helper
+│       │   ├── BluetoothSppManager.kt            ← Bluetooth Classic SPP master client
+│       │   ├── CsvManager.kt                     ← Database indexing & CSV I/O
+│       │   ├── DriveSyncManager.kt               ← Google Drive Webhook sync engine
+│       │   ├── models/
+│       │   │   └── Asset.kt                      ← Unified asset data model
+│       │   └── ui/
+│       │       ├── components/
+│       │       │   ├── BtStatusChip.kt           ← Animated Bluetooth status badge
+│       │       │   ├── ConditionScoreDialog.kt   ← Compose condition scoring dialog
+│       │       │   ├── CustomSnackbarVisuals.kt  ← High-visibility scan banners
+│       │       │   └── ScanLogCard.kt            ← Expandable terminal log cards
+│       │       ├── screens/
+│       │       │   ├── AddAssetScreen.kt         ← Compose new asset entry screen
+│       │       │   ├── MainScannerScreen.kt      ← Compose scan & log dual tabs
+│       │       │   ├── SessionScreen.kt          ← Compose session setup & mode select
+│       │       │   └── SettingsScreen.kt         ← Compose settings & storage manager
+│       │       └── theme/
+│       │           ├── Color.kt                  ← Material 3 & Terminal color tokens
+│       │           ├── Theme.kt                  ← Monash Health Compose theme
+│       │           └── Type.kt                   ← Inter & JetBrains Mono typography
+│       └── res/
+│           ├── drawable/                         ← Vector icons & brand assets
+│           ├── font/                             ← JetBrains Mono & Inter font files
+│           ├── mipmap-*/                         ← Launcher icons
+│           └── values/                           ← Colors, strings, and splash themes
+├── gradle/
+│   └── libs.versions.toml                        ← Version catalog
+├── README.md
+└── settings.gradle
 ```
 
 ---
 
-## Setup
+## Settings & Preferences
 
-1. Open in **Android Studio** (Hedgehog or later)
-2. Sync Gradle - key dependencies in `app/build.gradle`:
-   ```gradle
-   implementation libs.material
-   implementation libs.androidx.appcompat
-   implementation libs.androidx.activity.ktx
-   implementation libs.androidx.documentfile
-   implementation libs.opencsv
-   implementation libs.androidx.recyclerview
-   ```
-3. Build and install on a **physical device** (Bluetooth does not work on emulators)
-4. Minimum tested device: 480×854, 4.6", Android 9 (API 28)
-
----
-
-## How to Use
-
-### Starting a session
-1. Launch the app - the **Session screen** appears
-2. Enter your **initials** (required, max 15 chars, auto-uppercased)
-3. Enter your **QA location** (e.g. `MHCE`) - optional, a confirmation dialog appears if blank
-4. Tap **Start Session** - a session header row is written to the output CSV
-
-### Loading the asset reference list
-- Tap **⋮ menu → 📂 Load Asset List (.csv)**
-- Pick your `.csv` file - the app reads columns: `asset_number`, `serial`, `department`, `barcode`, `routine_period`
-- Status shows: `✓ Loaded 12345 records`
-- The URI is remembered and reloads automatically on next launch
-
-### Scanning assets
-- Type or scan into the search field - hardware scanners work via `dispatchKeyEvent`
-- Tap **Search** or press Enter
-- **Found:** green snackbar `✓ FOUND - MH12345 logged`, entry appears in LOG tab
-- **Already logged:** orange snackbar `⚠ Already logged - MH12345`
-- **Not found:** opens **Add New Asset** screen for manual entry
-
-### LOG tab
-- Shows all scans for the session including session header rows (teal)
-- **Long-press** a row to enter selection mode → select rows → **Delete** to remove from log and CSV
-- Session header rows cannot be selected or deleted
-
-### Bluetooth
-- Pair device first via **Android Settings → Bluetooth**
-- Tap **⋮ menu → 🔵 Connect Bluetooth** → select device
-- The app auto-reconnects if disconnected; a pulsing **RECONNECT** button appears
-- Scanned asset numbers are transmitted as ASCII with `\r` terminator
-
-### Ending a session
-- Tap **End Session** (red, in toolbar) → confirm dialog
-- Returns to Session screen; session date is cleared
-- Sessions also auto-end overnight if the date changes
-
----
-
-## CSV Formats
-
-### Source CSV (read only)
-
-Column order: `asset_number`, `serial_number`, `department`, `barcode`, `routine_period`
-
-```
-asset_number,serial_number,department,barcode,routine_period
-MH12345,SN-ABC-001,ICU,BC-001,12
-MH12346,SN-ABC-002,ED,BC-002,24
-MH12347,SN-ABC-003,Pharmacy,BC-003,60
-```
-
-`routine_period` values: `12` = yellow sticker, `24` = white sticker, `60` = green sticker, blank/other = no dot.
-
-### Output CSV (written by app)
-
-Filename: `qa_assets_DD-MM-YYYY.csv` (or `scanner_1_qa_assets_DD-MM-YYYY.csv` if scanner name is set)
-
-```
-asset_number,department,make,model,serial_number,timestamp,row_type
-RX,MHCE,,,, 08:01:23,session
-MH12345,ICU,,,, 08:05:11,
-MH12346,ED,,,, 08:06:44,
-NEW001,WARD4,GE,Monitor,SN-GE-001,08:10:02,
-```
-
-- **Session rows** - `row_type = session`; `asset_number` = operator initials, `department` = location
-- **Found asset rows** - `row_type` blank; only `asset_number`, `department`, `timestamp` populated
-- **New asset rows** - all columns populated from the Add Asset screen
-
----
-
-## Settings
+All preferences are managed via [SettingsScreen.kt](file:///Users/rxue/Project/agy%20CEQA/Monash_CEQA/app/src/main/java/me/rxue/mhceqa/ui/screens/SettingsScreen.kt) and persisted in `asset_scanner_prefs`:
 
 | Setting | Default | Description |
 |---|---|---|
-| Scanner name | _(blank)_ | Prefix added to output filename, e.g. `scanner_1` |
-| Output folder | App external files dir | Custom folder via system folder picker |
-| QA record font size | Medium | Small / Medium / Large in LOG tab |
-| Scan result duration | 5 seconds | How long the found/not-found snackbar stays visible (2–10s) |
+| **Scanner Prefix** | *(blank)* | Device identifier prefix added to CSV filenames (e.g. `1` produces `1_qa_...csv`). |
+| **Storage Location** | Internal / Custom SAF | Directory where output CSV files and daily archives are saved. |
+| **Google Drive Records Upload** | Configured | Automated Google Apps Script Webhook URL for daily record uploads. |
+| **Source List Cloud Sync** | Folder ID configured | Syncs updated reference CSV files directly from Google Drive. |
+| **Source List Auto-Check** | `false` | Automatically checks for updated source lists on app launch. |
+| **Log Font Size** | `14sp` | Text scaling for the real-time LOG tab (`11sp` to `20sp`). |
+| **Found Banner Duration** | `4s` | Display duration for scan feedback banners (`1s` to `10s`). |
 
 ---
 
-## Bluetooth Notes
+## Building and Installing
 
-- Connects as **master** to slave device (HC-05, HC-06, or any SPP device)
-- SPP UUID: `00001101-0000-1000-8000-00805F9B34FB`
-- Line terminator: `\r` (carriage return only) - edit `LINE_TERMINATOR` in `BluetoothSppManager.kt`
-- Fallback to `createRfcommSocket(1)` if standard UUID connection fails
-- Reader thread detects disconnection within 1–2 seconds on all Android versions
+### Prerequisites
+* **Android Studio** Ladybug or newer
+* **JDK:** Java 17 or Java 21 (configured as `JAVA_HOME`)
+* **Android SDK:** Platform 36, Build-Tools 36.0.0
 
-### Permissions by Android version
+### Build Debug APK
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+./gradlew assembleDebug
+```
+The output APK is generated at:
+`app/build/outputs/apk/debug/app-debug.apk`
 
-| Android version | Permissions |
-|---|---|
-| ≤ Android 11 (API 30) | `BLUETOOTH`, `BLUETOOTH_ADMIN`, `ACCESS_COARSE_LOCATION` |
-| Android 12+ (API 31+) | `BLUETOOTH_CONNECT`, `BLUETOOTH_SCAN` |
+### Install to Handheld Terminal via ADB
+```bash
+# Check connected device
+adb devices
+
+# Install APK directly
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Copy APK to terminal Downloads folder
+adb push app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/mhceqa_v2.0.apk
+```
 
 ---
 
-## SharedPreferences Keys
+## License & Credits
 
-All stored under `"asset_scanner_prefs"`:
-
-| Key | Type | Description |
-|---|---|---|
-| `session_active` | Boolean | Whether a session is currently active |
-| `session_user_initials` | String | Operator initials for current session |
-| `session_qa_location` | String | QA location for current session |
-| `session_date` | String | Date of current session (`dd-MM-yyyy`) |
-| `source_uri` | String | URI of the loaded source CSV |
-| `output_folder_uri` | String | URI of the custom output folder |
-| `scanner_name` | String | Scanner name prefix for output filename |
-| `log_font_size` | Float | Font size for LOG tab (12 / 15 / 17) |
-| `snackbar_duration` | Int | Snackbar display duration in milliseconds |
-| `last_bt_device_address` | String | MAC address of last connected BT device |
-| `bt_was_connected_on_pause` | Boolean | Whether BT was connected when app was paused |
+Developed by **Rui Xue** for **Monash Health Clinical Engineering**.
+All rights reserved. Designed for internal medical device auditing and CEQA workflows.
