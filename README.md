@@ -2,7 +2,7 @@
 
 An Android app built for **Monash Health CEQA** to perform QA scanning of medical assets. Operators scan asset IDs against a reference CSV, log found assets in real time, record new ones manually, and optionally transmit scan data to a Bluetooth SPP device.
 
-- **Package:** `org.monash.ceqa`
+- **Package:** `me.rxue.mhceqa`
 - **Min SDK:** 26 (Android 8.0)  
 - **Target SDK:** 36  
 - **Version:** 1.5.2

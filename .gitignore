@@ -10,3 +10,9 @@ local.properties
 # built application files
 *.apk
 *.ap_
+
+# IDE & OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
