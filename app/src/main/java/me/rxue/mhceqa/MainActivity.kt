@@ -333,9 +333,18 @@ class MainActivity : AppCompatActivity() {
         sessionType = prefs.getString(SessionActivity.KEY_SESSION_TYPE, SessionActivity.SESSION_TYPE_QA) ?: SessionActivity.SESSION_TYPE_QA
 
         if (lookupMap.isEmpty() && !manualCsvPickInProgress) {
-            csvManager.loadSavedSourceUri()?.let { savedUri ->
+            val savedUri = csvManager.loadSavedSourceUri()
+            if (savedUri != null) {
                 val savedName = csvManager.loadSavedSourceName() ?: getFileNameFromUri(savedUri)
-                loadSourceCsv(savedUri, savedName)
+                val cached = SourceAssetRepository.cachedLookupMap
+                if (cached != null && SourceAssetRepository.cachedUri == savedUri) {
+                    lookupMap = cached
+                    sourceCsvName = savedName
+                    csvItemCount = SourceAssetRepository.cachedItemCount
+                    reResolveAssets()
+                } else {
+                    loadSourceCsv(savedUri, savedName, showNotification = !SourceAssetRepository.isLoaded)
+                }
             }
         } else if (lookupMap.isNotEmpty()) {
             reResolveAssets()
@@ -459,18 +468,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadSourceCsv(uri: Uri, fileName: String? = null) {
+    private fun loadSourceCsv(uri: Uri, fileName: String? = null, showNotification: Boolean = true) {
         val resolvedName = fileName ?: getFileNameFromUri(uri)
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                runCatching { csvManager.loadLookupMap(uri) }
+                runCatching { SourceAssetRepository.getOrLoad(this@MainActivity, uri, resolvedName) }
             }
             result.onSuccess { (map, count) ->
                 lookupMap = map
                 sourceCsvName = resolvedName
                 csvItemCount = count
                 reResolveAssets()
-                showSnackbar("✓ Loaded $count assets from CSV")
+                if (showNotification) {
+                    showSnackbar("✓ Loaded $count assets from CSV")
+                }
             }.onFailure {
                 lookupMap = emptyMap()
                 sourceCsvName = "Failed to load CSV"
@@ -924,7 +935,7 @@ class MainActivity : AppCompatActivity() {
         if (autoSync && webhookUrl.isNotBlank()) {
             @Suppress("DEPRECATION")
             val progressDialog = android.app.ProgressDialog(this).apply {
-                setMessage("Syncing to Google Drive & archiving...")
+                setMessage("Connecting to Google Drive...")
                 setCancelable(false)
                 show()
             }
@@ -933,7 +944,16 @@ class MainActivity : AppCompatActivity() {
                     DriveSyncManager.syncAndArchiveAllFiles(
                         context = this@MainActivity,
                         csvManager = csvManager,
-                        scannerNumber = csvManager.scannerName
+                        scannerNumber = csvManager.scannerName,
+                        onProgress = { msg ->
+                            runOnUiThread {
+                                try {
+                                    if (progressDialog.isShowing) {
+                                        progressDialog.setMessage(msg)
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                        }
                     )
                 }
                 try {
@@ -991,15 +1011,35 @@ class MainActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            if (manual) {
-                showSnackbar("☁️ Syncing CSV files to Google Drive...")
+            @Suppress("DEPRECATION")
+            val progressDialog = if (manual) {
+                android.app.ProgressDialog(this@MainActivity).apply {
+                    setMessage("Connecting to Google Drive...")
+                    setCancelable(false)
+                    show()
+                }
+            } else null
+
+            val result = withContext(Dispatchers.IO) {
+                DriveSyncManager.syncAndArchiveAllFiles(
+                    context = this@MainActivity,
+                    csvManager = csvManager,
+                    scannerNumber = csvManager.scannerName,
+                    onProgress = { msg ->
+                        runOnUiThread {
+                            try {
+                                if (progressDialog?.isShowing == true) {
+                                    progressDialog.setMessage(msg)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                )
             }
 
-            val result = DriveSyncManager.syncAndArchiveAllFiles(
-                context = this@MainActivity,
-                csvManager = csvManager,
-                scannerNumber = csvManager.scannerName
-            )
+            try {
+                if (progressDialog?.isShowing == true) progressDialog.dismiss()
+            } catch (_: Exception) {}
 
             outputPath = csvManager.outputFilePath
 

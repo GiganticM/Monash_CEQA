@@ -48,6 +48,12 @@ class SessionActivity : AppCompatActivity() {
         setTheme(R.style.Theme_MonashCEQA)
         super.onCreate(savedInstanceState)
 
+        val savedUri = CsvManager(this).loadSavedSourceUri()
+        if (savedUri != null) {
+            val savedName = CsvManager(this).loadSavedSourceName()
+            SourceAssetRepository.preload(this, savedUri, savedName)
+        }
+
         if (isSessionActive(this)) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()

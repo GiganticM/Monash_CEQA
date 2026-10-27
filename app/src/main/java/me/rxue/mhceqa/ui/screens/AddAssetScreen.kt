@@ -190,6 +190,9 @@ fun AddAssetScreen(
                 onValueChange = { department = it.uppercase() },
                 label = { Text("Department") },
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue
@@ -242,6 +245,9 @@ fun AddAssetScreen(
                 label = { Text("Serial Number") },
                 placeholder = { Text("Scan barcode or enter S/N") },
                 singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue

@@ -115,7 +115,11 @@ class BluetoothSppManager(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun getPairedDevices(): List<BluetoothDevice> =
-        bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
+        try {
+            bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
 
     // ─── Connection ───────────────────────────────────────────────────────────
 

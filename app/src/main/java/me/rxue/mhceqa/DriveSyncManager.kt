@@ -234,7 +234,8 @@ object DriveSyncManager {
         context: Context,
         csvManager: CsvManager,
         scannerNumber: String,
-        folderId: String? = null
+        folderId: String? = null,
+        onProgress: ((String) -> Unit)? = null
     ): BatchSyncResult = withContext(Dispatchers.IO) {
         val webhookUrl = getWebhookUrl(context)
         if (webhookUrl.isBlank()) {
@@ -245,6 +246,8 @@ object DriveSyncManager {
                 message = "Google Drive Webhook URL not configured. Set it in Settings."
             )
         }
+
+        onProgress?.invoke("Connecting to Google Drive...")
 
         // Ensure paired files (e.g. qa_...csv and qa_..._NEW.csv, or io_...csv and io_..._NEW.csv)
         // exist and are present in the output folder
@@ -287,6 +290,8 @@ object DriveSyncManager {
         var failedCount = 0
         var bypassedCount = 0
 
+        val filesToUpload = mutableListOf<Triple<androidx.documentfile.provider.DocumentFile, String, String>>()
+
         for ((pairKey, filesInPair) in pairGroups) {
             // Sort so base file is uploaded first, then NEW file:
             // [qa_...csv, qa_..._NEW.csv]
@@ -327,25 +332,33 @@ object DriveSyncManager {
                 continue
             }
 
-            // If any file in the pair was modified, always upload BOTH files together!
-            Log.i(TAG, "Syncing pair $pairKey (${fileData.map { it.second }.joinToString(", ")}) to Google Drive")
-            for ((doc, fileName, content) in fileData) {
-                val currentHash = computeSha256(content)
-                val result = syncCsv(
-                    context = context,
-                    fileName = fileName,
-                    fileContent = content,
-                    scannerNumber = scannerNumber,
-                    folderId = folderId
-                )
+            // If any file in the pair was modified, queue both files for upload
+            filesToUpload.addAll(fileData)
+        }
 
-                if (result.success) {
-                    saveLastSyncedHash(context, fileName, currentHash)
-                    csvManager.archiveFile(doc)
-                    successCount++
-                } else {
-                    failedCount++
-                }
+        val totalToUpload = filesToUpload.size
+        var uploadIndex = 0
+
+        for ((doc, fileName, content) in filesToUpload) {
+            uploadIndex++
+            onProgress?.invoke("Uploading records ($uploadIndex/$totalToUpload)...")
+            Log.i(TAG, "Uploading ($uploadIndex/$totalToUpload) $fileName to Google Drive")
+
+            val currentHash = computeSha256(content)
+            val result = syncCsv(
+                context = context,
+                fileName = fileName,
+                fileContent = content,
+                scannerNumber = scannerNumber,
+                folderId = folderId
+            )
+
+            if (result.success) {
+                saveLastSyncedHash(context, fileName, currentHash)
+                csvManager.archiveFile(doc)
+                successCount++
+            } else {
+                failedCount++
             }
         }
 

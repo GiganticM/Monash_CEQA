@@ -356,13 +356,15 @@ class CsvManager(private val context: Context) {
 
     // URI Persistence (source CSV)
 
-    fun saveSourceUri(uri: Uri, fileName: String? = null) =
+    fun saveSourceUri(uri: Uri, fileName: String? = null) {
+        SourceAssetRepository.invalidate()
         prefs.edit {
             putString(KEY_SOURCE_URI, uri.toString())
             if (!fileName.isNullOrBlank()) {
                 putString(KEY_SOURCE_NAME, fileName)
             }
         }
+    }
 
     fun loadSavedSourceUri(): Uri? =
         prefs.getString(KEY_SOURCE_URI, null)?.toUri()
@@ -370,11 +372,13 @@ class CsvManager(private val context: Context) {
     fun loadSavedSourceName(): String? =
         prefs.getString(KEY_SOURCE_NAME, null)
 
-    fun clearSourceUri() =
+    fun clearSourceUri() {
+        SourceAssetRepository.invalidate()
         prefs.edit {
             remove(KEY_SOURCE_URI)
             remove(KEY_SOURCE_NAME)
         }
+    }
 
     /**
      * Writes updated source asset CSV content to disk.
@@ -426,38 +430,9 @@ class CsvManager(private val context: Context) {
     // Source CSV Loading
 
     fun loadLookupMap(uri: Uri): Pair<Map<String, List<SourceRecord>>, Int> {
-        val map = mutableMapOf<String, MutableList<SourceRecord>>()
-        var assetCount = 0
-
-        fun addToMap(key: String, record: SourceRecord) {
-            if (key.isNotEmpty()) map.getOrPut(key.lowercase()) { mutableListOf() }.add(record)
+        return kotlinx.coroutines.runBlocking {
+            SourceAssetRepository.getOrLoad(context, uri)
         }
-
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            CSVReader(InputStreamReader(inputStream)).use { reader ->
-                var line: Array<String>?
-                var isFirstRow = true
-                while (reader.readNext().also { line = it } != null) {
-                    if (isFirstRow) { isFirstRow = false; continue }
-                    val row = line ?: continue
-
-                    val assetNumber   = row.getOrElse(0) { "" }.trim()
-                    val serial        = row.getOrElse(1) { "" }.trim()
-                    val department    = row.getOrElse(2) { "" }.trim()
-                    val barcode       = row.getOrElse(3) { "" }.trim()
-                    val routinePeriod = row.getOrElse(4) { "" }.trim().toIntOrNull() ?: 0
-
-                    if (assetNumber.isEmpty()) continue
-                    assetCount++
-
-                    val record = SourceRecord(assetNumber, department, routinePeriod)
-                    addToMap(assetNumber, record)
-                    addToMap(serial,      record)
-                    addToMap(barcode,     record)
-                }
-            }
-        }
-        return Pair(map, assetCount)
     }
 
     // Output CSV

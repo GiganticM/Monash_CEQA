@@ -203,6 +203,9 @@ fun SessionScreen(
                                 tint = activeColor
                             )
                         },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                        ),
                         isError = initialsError != null,
                         supportingText = initialsError?.let { { Text(it) } },
                         singleLine = true,
@@ -229,6 +232,9 @@ fun SessionScreen(
                                 tint = activeColor
                             )
                         },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                        ),
                         singleLine = true,
                         shape = RoundedCornerShape(8.dp),
                         colors = OutlinedTextFieldDefaults.colors(

@@ -10,7 +10,9 @@ object BarcodeHelper {
         "android.bld.scan.action.RESULT_BROADCAST",
         "com.action.SCAN_RESULT",
         "com.scansku.barcode",
-        "nlscan.action.SCANER_RESULT"
+        "nlscan.action.SCANER_RESULT",
+        "android.intent.ACTION_DECODE_DATA",
+        "com.android.server.scannerservice.broadcast"
     )
 
     fun createBarcodeIntentFilter(): IntentFilter {

@@ -309,19 +309,39 @@ fun MainScannerScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // User info on left, BT status chip on right
+                        // User info on left (2 lines: initials top, location bottom), BT status chip / IO banner on right
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             if (userInitials.isNotBlank() || userLocation.isNotBlank()) {
-                                Text(
-                                    text = "👤 ${userInitials.trim()}  📍 ${userLocation.trim()}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    color = TextDark
-                                )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .padding(end = 8.dp)
+                                ) {
+                                    if (userInitials.isNotBlank()) {
+                                        Text(
+                                            text = "👤 ${userInitials.trim()}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextDark,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    if (userLocation.isNotBlank()) {
+                                        Text(
+                                            text = "📍 ${userLocation.trim()}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Normal,
+                                            color = TextSubtle,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             } else {
                                 Spacer(modifier = Modifier.weight(1f, fill = false))
                             }
