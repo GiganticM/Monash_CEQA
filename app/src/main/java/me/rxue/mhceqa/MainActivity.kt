@@ -182,6 +182,7 @@ class MainActivity : AppCompatActivity() {
             saveAsset(asset)
             sendViaBluetooth(assetNumber)
             showFoundBanner(assetNumber, alreadyLogged = false, isNew = true)
+            searchInput = ""
         }
     }
 
@@ -231,7 +232,6 @@ class MainActivity : AppCompatActivity() {
                     selectedTab = selectedTab,
                     onTabSelected = { tab ->
                         selectedTab = tab
-                        searchInput = ""
                         scanBuffer.clear()
                     },
                     lastScannedAssetNumber = lastScannedAssetNumber,
@@ -264,7 +264,7 @@ class MainActivity : AppCompatActivity() {
                 conditionScorePrompt?.let { (assetNumber, existing) ->
                     ConditionScoreDialog(
                         assetNumber = assetNumber,
-                        initialScore = existing.conditionScore.ifEmpty { "0" },
+                        initialScore = existing.conditionScore.ifEmpty { "+1" },
                         onDismiss = { conditionScorePrompt = null },
                         onSave = { score ->
                             conditionScorePrompt = null
@@ -527,6 +527,7 @@ class MainActivity : AppCompatActivity() {
                 val existing = scanLog.firstOrNull { it.assetNumber.equals(query, ignoreCase = true) }
                     ?: csvManager.readSavedAssets().firstOrNull { it.assetNumber.equals(query, ignoreCase = true) }
                 if (existing != null) {
+                    searchInput = ""
                     sendViaBluetooth(query)
                     if (isIoSession) {
                         promptConditionScoreDialog(query, existing)
@@ -574,6 +575,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resolveAndSave(record: CsvManager.SourceRecord) {
+        searchInput = ""
         sendViaBluetooth(record.assetNumber)
         val existing = scanLog.firstOrNull { it.assetNumber.equals(record.assetNumber, ignoreCase = true) }
             ?: csvManager.readSavedAssets().firstOrNull { it.assetNumber.equals(record.assetNumber, ignoreCase = true) }
@@ -591,11 +593,12 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             val asset = Asset(
-                assetNumber   = record.assetNumber,
-                department    = record.department,
-                isNew         = false,
-                routinePeriod = record.routinePeriod,
-                userInitials  = userInitials
+                assetNumber    = record.assetNumber,
+                department     = record.department,
+                isNew          = false,
+                routinePeriod  = record.routinePeriod,
+                userInitials   = userInitials,
+                conditionScore = if (isIoSession) "+1" else ""
             )
             saveAsset(asset)
             showFoundBanner(record.assetNumber, alreadyLogged = false, routinePeriod = record.routinePeriod)

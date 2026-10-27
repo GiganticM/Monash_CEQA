@@ -1,6 +1,7 @@
 package me.rxue.mhceqa.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,6 +33,23 @@ import me.rxue.mhceqa.ui.theme.PrimaryBlue
 import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
 
+fun getConditionScoreDescription(score: String): String = when (score) {
+    "+2" -> "Excellent"
+    "+1" -> "Good"
+    "0"  -> "Fair"
+    "-1" -> "Poor"
+    "-2" -> "Very Poor"
+    else -> ""
+}
+
+val CONDITION_SCORE_DESCRIPTIONS = listOf(
+    "+2" to "Excellent",
+    "+1" to "Good (Default)",
+    "0"  to "Fair",
+    "-1" to "Poor",
+    "-2" to "Very Poor"
+)
+
 @Composable
 fun ConditionScoreDialog(
     assetNumber: String,
@@ -39,7 +58,7 @@ fun ConditionScoreDialog(
     onSave: (String) -> Unit
 ) {
     var selectedScore by remember(assetNumber, initialScore) {
-        mutableStateOf(initialScore.ifEmpty { "0" })
+        mutableStateOf(initialScore.ifEmpty { "+1" })
     }
     val scoreOptions = listOf("-2", "-1", "0", "+1", "+2")
 
@@ -94,6 +113,56 @@ fun ConditionScoreDialog(
                                     color = if (isSelected) Color.White else TextDark
                                 )
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Active description highlight
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFE3F2FD),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Rating: $selectedScore — ${getConditionScoreDescription(selectedScore)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryBlue,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Description breakdown list
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    CONDITION_SCORE_DESCRIPTIONS.forEach { (score, desc) ->
+                        val isCurrent = selectedScore == score
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$score :",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isCurrent) PrimaryBlue else TextDark
+                            )
+                            Text(
+                                text = desc,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) PrimaryBlue else TextSubtle
+                            )
                         }
                     }
                 }

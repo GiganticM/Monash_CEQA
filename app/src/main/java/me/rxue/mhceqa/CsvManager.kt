@@ -513,7 +513,7 @@ class CsvManager(private val context: Context) {
                             saved.serial,
                             saved.timestamp,
                             saved.userInitials,
-                            saved.conditionScore
+                            saved.conditionScore.ifEmpty { "+1" }
                         )
                     } else {
                         arrayOf(
@@ -548,7 +548,7 @@ class CsvManager(private val context: Context) {
                             saved.department,
                             saved.timestamp,
                             "found",
-                            saved.conditionScore
+                            saved.conditionScore.ifEmpty { "+1" }
                         )
                     } else {
                         arrayOf(
@@ -568,6 +568,7 @@ class CsvManager(private val context: Context) {
     fun readSavedAssets(): List<Asset> {
         val assets = mutableListOf<Asset>()
         var currentSessionUser = ""
+        val isIo = sessionType.equals(SessionActivity.SESSION_TYPE_IO, ignoreCase = true)
 
         // 1. Read main/found assets file
         val foundDoc = getOutputDocumentFile(create = false, isNewAssets = false)
@@ -599,7 +600,8 @@ class CsvManager(private val context: Context) {
                             val assetNum = row.getOrElse(0) { "" }.uppercase()
                             val dept = row.getOrElse(1) { "" }
                             val time = if (isFoundRow || row.size <= 4) row.getOrElse(2) { "" } else row.getOrElse(5) { "" }
-                            val score = if (isFoundRow) row.getOrElse(4) { "" } else ""
+                            val rawScore = if (isFoundRow) row.getOrElse(4) { "" } else ""
+                            val score = if (isIo && isFoundRow) rawScore.ifEmpty { "+1" } else rawScore
 
                             assets.add(Asset(
                                 assetNumber    = assetNum,
@@ -637,7 +639,8 @@ class CsvManager(private val context: Context) {
                         val serial = row.getOrElse(4) { "" }
                         val time = row.getOrElse(5) { "" }
                         val initials = row.getOrElse(6) { currentSessionUser }
-                        val score = row.getOrElse(7) { "" }
+                        val rawScore = row.getOrElse(7) { "" }
+                        val score = if (isIo) rawScore.ifEmpty { "+1" } else rawScore
 
                         assets.add(Asset(
                             assetNumber    = assetNum,
