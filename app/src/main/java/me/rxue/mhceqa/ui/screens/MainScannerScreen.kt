@@ -324,7 +324,7 @@ fun MainScannerScreen(
                                     if (userInitials.isNotBlank()) {
                                         Text(
                                             text = "👤 ${userInitials.trim()}",
-                                            style = MaterialTheme.typography.bodySmall,
+                                            fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = TextDark,
                                             maxLines = 1,
@@ -334,8 +334,8 @@ fun MainScannerScreen(
                                     if (userLocation.isNotBlank()) {
                                         Text(
                                             text = "📍 ${userLocation.trim()}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Normal,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
                                             color = TextSubtle,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

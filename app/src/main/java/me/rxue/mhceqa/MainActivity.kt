@@ -919,14 +919,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEndSessionDialog() {
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle(if (isIoSession) "End IO Session?" else "End QA Session?")
             .setMessage(if (isIoSession) "Are you sure you want to end the current IO session?" else "Are you sure you want to end the current QA session?")
             .setPositiveButton("End Session") { _, _ ->
                 performEndSessionSync()
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.apply {
+                setTextColor(android.graphics.Color.parseColor("#D32F2F"))
+                paint.isFakeBoldText = true
+            }
+        }
+        dialog.show()
     }
 
     private fun performEndSessionSync() {
