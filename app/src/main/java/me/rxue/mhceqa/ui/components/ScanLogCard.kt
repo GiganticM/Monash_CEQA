@@ -71,9 +71,10 @@ fun ScanLogCard(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 7.dp)
         ) {
+            // Primary Row: [HH:MM] | Asset Number | User initials - Coloured Dot - FOUND/NEW badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 // [HH:MM]
                 val displayTime = if (asset.timestamp.length > 5 && asset.timestamp.contains(":")) {
@@ -86,93 +87,94 @@ fun ScanLogCard(
                     fontFamily = JetBrainsMonoFontFamily,
                     fontSize = (fontSizeSp - 1).coerceAtLeast(10f).sp,
                     color = TerminalGreenSecondary,
-                    modifier = Modifier.width(54.dp).padding(top = 1.dp)
+                    modifier = Modifier.width(54.dp)
                 )
 
-                // Asset Number & Department
-                Column(
+                // Asset Number
+                Text(
+                    text = if (asset.isSessionHeader) "👤 ${asset.assetNumber}" else asset.assetNumber,
+                    fontFamily = JetBrainsMonoFontFamily,
+                    fontSize = fontSizeSp.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (asset.isSessionHeader) Color(0xFF80CBC4) else TerminalGreenPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
+                )
+
+                // Status cluster: User initials - Coloured Dot - Status Badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // User initials badge
+                    if (asset.userInitials.isNotBlank()) {
+                        Text(
+                            text = asset.userInitials,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontSize = (fontSizeSp - 2).coerceAtLeast(10f).sp,
+                            color = Color(0xFF80CBC4),
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    }
+
+                    // Sticker color dot (12 / 24 / 60 mth routine period)
+                    val stickerColor = when (asset.routinePeriod) {
+                        12 -> Color(0xFFFDD835) // Yellow
+                        24 -> Color(0xFFF5F5F5) // White
+                        60 -> Color(0xFF66BB6A) // Green
+                        else -> null
+                    }
+
+                    if (stickerColor != null) {
+                        Box(
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(stickerColor)
+                        )
+                    }
+
+                    // Type Badge (FOUND / NEW / SESSION)
+                    val (badgeText, badgeColor) = when {
+                        asset.isSessionHeader -> "SESSION" to TerminalGreenSecondary
+                        asset.isNew -> "NEW" to BadgeNewColor
+                        else -> "FOUND" to BadgeFoundColor
+                    }
+
                     Text(
-                        text = if (asset.isSessionHeader) "👤 ${asset.assetNumber}" else asset.assetNumber,
+                        text = badgeText,
                         fontFamily = JetBrainsMonoFontFamily,
-                        fontSize = fontSizeSp.sp,
+                        fontSize = (fontSizeSp - 2).coerceAtLeast(10f).sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (asset.isSessionHeader) Color(0xFF80CBC4) else TerminalGreenPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = badgeColor
                     )
 
-                    // Department shown below asset number (for FOUND and collapsed NEW assets)
-                    if (asset.department.isNotBlank() && (!asset.isNew || !isExpanded)) {
+                    // Interactive expand/collapse indicator for NEW assets
+                    if (asset.isNew) {
                         Text(
-                            text = if (asset.isSessionHeader) "📍 ${asset.department}" else asset.department,
+                            text = if (isExpanded) "▲" else "▼",
                             fontFamily = JetBrainsMonoFontFamily,
-                            fontSize = (fontSizeSp - 2).coerceAtLeast(9.5f).sp,
-                            color = if (asset.isSessionHeader) Color(0xFF80CBC4) else TerminalGreenSubtle,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(top = 1.dp)
+                            fontSize = (fontSizeSp - 3).coerceAtLeast(9f).sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BadgeNewColor,
+                            modifier = Modifier.padding(start = 3.dp)
                         )
                     }
                 }
+            }
 
-                // User initials badge
-                if (asset.userInitials.isNotBlank()) {
-                    Text(
-                        text = asset.userInitials,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontSize = (fontSizeSp - 2).coerceAtLeast(10f).sp,
-                        color = Color(0xFF80CBC4),
-                        modifier = Modifier.padding(end = 6.dp, top = 2.dp)
-                    )
-                }
-
-                // Sticker color dot (12 / 24 / 60 mth routine period)
-                val stickerColor = when (asset.routinePeriod) {
-                    12 -> Color(0xFFFDD835) // Yellow
-                    24 -> Color(0xFFF5F5F5) // White
-                    60 -> Color(0xFF66BB6A) // Green
-                    else -> null
-                }
-
-                if (stickerColor != null) {
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 6.dp, top = 4.dp)
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(stickerColor)
-                    )
-                }
-
-                // Type Badge (FOUND / NEW / SESSION)
-                val (badgeText, badgeColor) = when {
-                    asset.isSessionHeader -> "SESSION" to TerminalGreenSecondary
-                    asset.isNew -> "NEW" to BadgeNewColor
-                    else -> "FOUND" to BadgeFoundColor
-                }
-
+            // Department row: directly below the asset number, indented 54.dp to align with asset number
+            if (asset.department.isNotBlank() && (!asset.isNew || !isExpanded)) {
                 Text(
-                    text = badgeText,
+                    text = if (asset.isSessionHeader) "📍 ${asset.department}" else asset.department,
                     fontFamily = JetBrainsMonoFontFamily,
-                    fontSize = (fontSizeSp - 2).coerceAtLeast(10f).sp,
-                    fontWeight = FontWeight.Bold,
-                    color = badgeColor,
-                    modifier = Modifier.padding(start = 4.dp, top = 1.dp)
+                    fontSize = (fontSizeSp - 2).coerceAtLeast(9.5f).sp,
+                    color = if (asset.isSessionHeader) Color(0xFF80CBC4) else TerminalGreenSubtle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 54.dp, top = 2.dp)
                 )
-
-                // Interactive expand/collapse indicator for NEW assets
-                if (asset.isNew) {
-                    Text(
-                        text = if (isExpanded) "▲" else "▼",
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontSize = (fontSizeSp - 3).coerceAtLeast(9f).sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BadgeNewColor,
-                        modifier = Modifier.padding(start = 3.dp, top = 1.dp)
-                    )
-                }
             }
 
         // 4 distinct rows for NEW assets (dept, make, model and S/N) - collapsible
