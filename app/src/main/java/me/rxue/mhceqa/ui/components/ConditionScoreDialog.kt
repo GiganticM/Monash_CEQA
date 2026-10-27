@@ -67,9 +67,7 @@ fun ConditionScoreDialog(
         title = {
             Text(
                 text = "Asset Condition Score",
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-                color = TextDark
+                fontWeight = FontWeight.Bold
             )
         },
         text = {
@@ -98,7 +96,7 @@ fun ConditionScoreDialog(
                                 .weight(1f)
                                 .height(46.dp)
                                 .clickable { selectedScore = score },
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (isSelected) PrimaryBlue else Color(0xFFF1F5F9),
                             border = BorderStroke(
                                 1.5.dp,
@@ -117,11 +115,11 @@ fun ConditionScoreDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Active description highlight
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFE3F2FD),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -130,19 +128,19 @@ fun ConditionScoreDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryBlue,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Description breakdown list
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF8FAFC), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     CONDITION_SCORE_DESCRIPTIONS.forEach { (score, desc) ->
                         val isCurrent = selectedScore == score
@@ -169,20 +167,16 @@ fun ConditionScoreDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = { onSave(selectedScore) },
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-                shape = RoundedCornerShape(6.dp)
+            TextButton(
+                onClick = { onSave(selectedScore) }
             ) {
-                Text("Save Score", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Save Score", color = PrimaryBlue, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSubtle)
+                Text("Cancel")
             }
-        },
-        containerColor = Color.White,
-        shape = RoundedCornerShape(12.dp)
+        }
     )
 }

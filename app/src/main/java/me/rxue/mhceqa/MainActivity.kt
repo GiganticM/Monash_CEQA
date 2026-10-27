@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedTab by mutableIntStateOf(0)
     private val isScanTabActive get() = (selectedTab == 0)
     private var conditionScorePrompt by mutableStateOf<Pair<String, Asset>?>(null)
+    private var showEndSessionPrompt by mutableStateOf(false)
 
     private val snackbarHostState = SnackbarHostState()
     private val focusRequester = FocusRequester()
@@ -256,7 +257,7 @@ class MainActivity : AppCompatActivity() {
                         settingsLauncher.launch(Intent(this, SettingsActivity::class.java))
                     },
                     onOpenAbout = { showAboutDialog() },
-                    onEndSession = { showEndSessionDialog() },
+                    onEndSession = { showEndSessionPrompt = true },
                     onSyncDrive = { triggerDriveSync(manual = true) },
                     onUpdateSourceCsv = { triggerSourceAssetUpdate(manual = true) }
                 )
@@ -269,6 +270,45 @@ class MainActivity : AppCompatActivity() {
                         onSave = { score ->
                             conditionScorePrompt = null
                             saveConditionScore(assetNumber, score)
+                        }
+                    )
+                }
+
+                if (showEndSessionPrompt) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showEndSessionPrompt = false },
+                        title = {
+                            androidx.compose.material3.Text(
+                                text = if (isIoSession) "End IO Session?" else "End QA Session?",
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            androidx.compose.material3.Text(
+                                text = if (isIoSession)
+                                    "Are you sure you want to end the current IO session?"
+                                else
+                                    "Are you sure you want to end the current QA session?"
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = {
+                                    showEndSessionPrompt = false
+                                    performEndSessionSync()
+                                }
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = "End Session",
+                                    color = Color(0xFFD32F2F),
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { showEndSessionPrompt = false }) {
+                                androidx.compose.material3.Text("Cancel")
+                            }
                         }
                     )
                 }
@@ -922,22 +962,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEndSessionDialog() {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(if (isIoSession) "End IO Session?" else "End QA Session?")
-            .setMessage(if (isIoSession) "Are you sure you want to end the current IO session?" else "Are you sure you want to end the current QA session?")
-            .setPositiveButton("End Session") { _, _ ->
-                performEndSessionSync()
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-
-        dialog.setOnShowListener {
-            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.apply {
-                setTextColor(android.graphics.Color.parseColor("#D32F2F"))
-                paint.isFakeBoldText = true
-            }
-        }
-        dialog.show()
+        showEndSessionPrompt = true
     }
 
     private fun performEndSessionSync() {
