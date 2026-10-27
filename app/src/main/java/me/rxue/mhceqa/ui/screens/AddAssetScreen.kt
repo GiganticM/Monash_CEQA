@@ -314,7 +314,7 @@ fun AddAssetScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Rating: $conditionScore — ${getConditionScoreDescription(conditionScore)}",
+                        text = "Rating $conditionScore: ${getConditionScoreDescription(conditionScore)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryBlue,

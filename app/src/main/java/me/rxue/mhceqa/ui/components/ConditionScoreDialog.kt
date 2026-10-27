@@ -34,20 +34,20 @@ import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
 
 fun getConditionScoreDescription(score: String): String = when (score) {
-    "+2" -> "Excellent"
-    "+1" -> "Good"
-    "0"  -> "Fair"
-    "-1" -> "Poor"
-    "-2" -> "Very Poor"
+    "+2" -> "Excellent / Like New"
+    "+1" -> "Good / Minor Wear"
+    "0"  -> "Fair / Operational"
+    "-1" -> "Poor / Needs Attention"
+    "-2" -> "Very Poor / Replace Soon"
     else -> ""
 }
 
 val CONDITION_SCORE_DESCRIPTIONS = listOf(
-    "+2" to "Excellent",
-    "+1" to "Good (Default)",
-    "0"  to "Fair",
-    "-1" to "Poor",
-    "-2" to "Very Poor"
+    "+2" to "Excellent / Like New",
+    "+1" to "Good / Minor Wear",
+    "0"  to "Fair / Operational",
+    "-1" to "Poor / Needs Attention",
+    "-2" to "Very Poor / Replace Soon"
 )
 
 @Composable
@@ -126,7 +126,7 @@ fun ConditionScoreDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "Rating: $selectedScore — ${getConditionScoreDescription(selectedScore)}",
+                        text = "Rating $selectedScore: ${getConditionScoreDescription(selectedScore)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryBlue,
