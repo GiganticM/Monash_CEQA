@@ -1,5 +1,6 @@
 package me.rxue.mhceqa.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,7 +57,8 @@ enum class AddAssetTargetField(val label: String) {
     DEPARTMENT("Department"),
     MAKE("Make"),
     MODEL("Model"),
-    SERIAL("Serial Number")
+    SERIAL("Serial Number"),
+    NOTE("Note")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,7 +68,7 @@ fun AddAssetScreen(
     isIo: Boolean = false,
     scannedBarcode: String? = null,
     onClearBarcode: () -> Unit = {},
-    onSave: (dept: String, make: String, model: String, serial: String, conditionScore: String) -> Unit,
+    onSave: (dept: String, make: String, model: String, serial: String, conditionScore: String, note: String) -> Unit,
     onCancel: () -> Unit
 ) {
     var department by remember { mutableStateOf("") }
@@ -74,6 +76,7 @@ fun AddAssetScreen(
     var model by remember { mutableStateOf("") }
     var serial by remember { mutableStateOf("") }
     var conditionScore by remember { mutableStateOf("+1") }
+    var note by remember { mutableStateOf("") }
 
     var activeField by remember { mutableStateOf(AddAssetTargetField.SERIAL) }
     var lastScannedMsg by remember { mutableStateOf<String?>(null) }
@@ -89,12 +92,17 @@ fun AddAssetScreen(
             AddAssetTargetField.MAKE -> make = code
             AddAssetTargetField.MODEL -> model = code
             AddAssetTargetField.SERIAL -> serial = code.uppercase()
+            AddAssetTargetField.NOTE -> note = if (note.isBlank()) code else "$note $code"
         }
         lastScannedMsg = "Scanned into ${activeField.label}: $code"
         onClearBarcode()
     }
 
-    fun hasInput() = department.isNotBlank() || make.isNotBlank() || model.isNotBlank() || serial.isNotBlank()
+    fun hasInput() = department.isNotBlank() || make.isNotBlank() || model.isNotBlank() || serial.isNotBlank() || note.isNotBlank()
+
+    BackHandler {
+        if (hasInput()) showDiscardDialog = true else onCancel()
+    }
 
     fun attemptSave() {
         val missing = mutableListOf<String>()
@@ -104,7 +112,7 @@ fun AddAssetScreen(
         if (serial.isBlank()) missing.add("Serial Number")
 
         if (missing.isEmpty()) {
-            onSave(department.trim(), make.trim(), model.trim(), serial.trim(), if (isIo) conditionScore else "")
+            onSave(department.trim(), make.trim(), model.trim(), serial.trim(), if (isIo) conditionScore else "", note.trim())
         } else {
             missingFieldsToConfirm = missing
         }
@@ -260,6 +268,25 @@ fun AddAssetScreen(
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.SERIAL }
             )
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Note (both QA and IO sessions)
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Note (Optional)") },
+                placeholder = { Text("Enter any additional notes about this asset") },
+                minLines = 2,
+                maxLines = 4,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PrimaryBlue,
+                    focusedLabelColor = PrimaryBlue
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.NOTE }
+            )
+
             if (isIo) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -407,7 +434,7 @@ fun AddAssetScreen(
                 TextButton(
                     onClick = {
                         missingFieldsToConfirm = null
-                        onSave(department.trim(), make.trim(), model.trim(), serial.trim(), if (isIo) conditionScore else "")
+                        onSave(department.trim(), make.trim(), model.trim(), serial.trim(), if (isIo) conditionScore else "", note.trim())
                     }
                 ) {
                     Text("Save Anyway", color = PrimaryBlue)

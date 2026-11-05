@@ -1,5 +1,6 @@
 package me.rxue.mhceqa.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -92,6 +93,10 @@ fun SettingsScreen(
     var sourceAutoUpdate by remember { mutableStateOf(initialSourceAutoUpdate) }
     var isCheckingSource by remember { mutableStateOf(false) }
     var sourceCheckResult by remember { mutableStateOf<String?>(null) }
+
+    BackHandler {
+        onBack()
+    }
 
     Scaffold(
         topBar = {

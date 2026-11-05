@@ -24,5 +24,6 @@ data class Asset(
     val routinePeriod:  Int     = 0,
     val isSessionHeader: Boolean = false,
     val userInitials:   String  = "",
-    val conditionScore: String  = ""
+    val conditionScore: String  = "",
+    val note:           String  = ""
 )

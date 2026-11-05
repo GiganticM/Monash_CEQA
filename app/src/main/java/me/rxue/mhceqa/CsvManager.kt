@@ -34,8 +34,8 @@ class CsvManager(private val context: Context) {
         val OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "timestamp", "row_type", "condition_score")
 
         // New assets: complete equipment registration columns
-        val NEW_OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials")
-        val NEW_OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "condition_score")
+        val NEW_OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "note")
+        val NEW_OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "condition_score", "note")
 
         private const val PREFS_NAME          = "asset_scanner_prefs"
         private const val KEY_SOURCE_URI      = "source_uri"
@@ -46,9 +46,16 @@ class CsvManager(private val context: Context) {
         private val DATE_FORMAT = SimpleDateFormat("dd-MM-yyyy", Locale.getDefault())
         private val TIME_FORMAT = SimpleDateFormat("HH:mm:ss",   Locale.getDefault())
 
+        @Synchronized
+        fun formatDate(date: Date = Date()): String = DATE_FORMAT.format(date)
+
+        @Synchronized
+        fun currentTimestamp(): String = TIME_FORMAT.format(Date())
+
         fun normalizeTimestamp(ts: String): String {
             val clean = ts.trim()
             if (clean.isEmpty()) return "00:00:00"
+            if (clean.length == 8 && clean[2] == ':' && clean[5] == ':') return clean
             val parts = clean.split(":")
             val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
             val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
@@ -71,7 +78,7 @@ class CsvManager(private val context: Context) {
         ): String {
             val prefix = if (sessionType.equals(SessionActivity.SESSION_TYPE_IO, ignoreCase = true)) "io" else "qa"
             val suffix = if (isNewAssets) "_NEW.csv" else ".csv"
-            val datePart = "${prefix}_${DATE_FORMAT.format(date)}$suffix"
+            val datePart = "${prefix}_${formatDate(date)}$suffix"
             return if (scannerPrefix.isBlank()) datePart
                    else "${scannerPrefix.trim()}_$datePart"
         }
@@ -199,17 +206,19 @@ class CsvManager(private val context: Context) {
         return if (folderUri != null) {
             val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return emptyList()
             folder.listFiles().filter { doc ->
-                doc.isFile &&
-                doc.name?.endsWith(".csv", ignoreCase = true) == true &&
-                !doc.name.equals(sourceName, ignoreCase = true) &&
-                !doc.name.equals("Archive", ignoreCase = true)
+                val name = doc.name ?: return@filter false
+                name.endsWith(".csv", ignoreCase = true) &&
+                !name.equals(sourceName, ignoreCase = true) &&
+                !name.equals("Archive", ignoreCase = true) &&
+                doc.isFile
             }
         } else {
             val dir = context.getExternalFilesDir(null) ?: return emptyList()
             dir.listFiles()?.filter { file ->
+                val name = file.name
                 file.isFile &&
-                file.name.endsWith(".csv", ignoreCase = true) &&
-                !file.name.equals(sourceName, ignoreCase = true)
+                name.endsWith(".csv", ignoreCase = true) &&
+                !name.equals(sourceName, ignoreCase = true)
             }?.map { DocumentFile.fromFile(it) } ?: emptyList()
         }
     }
@@ -226,25 +235,26 @@ class CsvManager(private val context: Context) {
         }
 
         val pending = getAllPendingOutputCsvFiles()
+        val pendingNamesLower = pending.mapNotNull { it.name?.lowercase() }.toSet()
         val folderUri = loadOutputFolderUri()
         if (folderUri != null) {
             val folder = DocumentFile.fromTreeUri(context, folderUri) ?: return
-            val archiveFolder = folder.findFile("Archive")
+            val archiveFolder = folder.findFile("Archive") ?: return
 
-            for (doc in pending) {
-                val name = doc.name ?: continue
-                val partnerName = if (name.endsWith("_NEW.csv", ignoreCase = true)) {
-                    name.substring(0, name.length - 8) + ".csv"
-                } else if (name.endsWith(".csv", ignoreCase = true)) {
-                    name.substring(0, name.length - 4) + "_NEW.csv"
+            for (nameLower in pendingNamesLower) {
+                val partnerName = if (nameLower.endsWith("_new.csv")) {
+                    nameLower.substring(0, nameLower.length - 8) + ".csv"
+                } else if (nameLower.endsWith(".csv")) {
+                    nameLower.substring(0, nameLower.length - 4) + "_NEW.csv"
                 } else continue
 
-                if (pending.any { it.name.equals(partnerName, ignoreCase = true) }) continue
+                if (partnerName.lowercase() in pendingNamesLower) continue
 
                 // Only restore from Archive if it actually exists! Do not create a non-existent partner.
-                val archivedPartner = archiveFolder?.findFile(partnerName)
+                val archivedPartner = archiveFolder.findFile(partnerName)
                 if (archivedPartner != null) {
-                    val restored = folder.createFile("text/csv", partnerName)
+                    val actualPartnerName = archivedPartner.name ?: partnerName
+                    val restored = folder.createFile("text/csv", actualPartnerName)
                     if (restored != null) {
                         try {
                             context.contentResolver.openInputStream(archivedPartner.uri)?.use { inStream ->
@@ -254,7 +264,7 @@ class CsvManager(private val context: Context) {
                             }
                             archivedPartner.delete()
                         } catch (e: Exception) {
-                            Log.e("CsvManager", "Failed to restore partner $partnerName from Archive", e)
+                            Log.e("CsvManager", "Failed to restore partner $actualPartnerName from Archive", e)
                         }
                     }
                 }
@@ -262,6 +272,7 @@ class CsvManager(private val context: Context) {
         } else {
             val dir = context.getExternalFilesDir(null) ?: return
             val archiveDir = File(dir, "Archive")
+            if (!archiveDir.exists()) return
 
             for (doc in pending) {
                 val name = doc.name ?: continue
@@ -271,7 +282,7 @@ class CsvManager(private val context: Context) {
                     name.substring(0, name.length - 4) + "_NEW.csv"
                 } else continue
 
-                if (pending.any { it.name.equals(partnerName, ignoreCase = true) }) continue
+                if (partnerName.lowercase() in pendingNamesLower) continue
 
                 val partnerFile = File(dir, partnerName)
                 val archivedFile = File(archiveDir, partnerName)
@@ -446,6 +457,13 @@ class CsvManager(private val context: Context) {
         }
     }
 
+    private fun isDocumentEmpty(doc: DocumentFile): Boolean {
+        if (doc.length() > 0L) return false
+        return context.contentResolver.openInputStream(doc.uri)?.use {
+            it.read() == -1
+        } ?: true
+    }
+
     /**
      * Appends a blank separator row (if the file already has prior content),
      * then a session header row. Also creates the file and writes the CSV header
@@ -453,15 +471,12 @@ class CsvManager(private val context: Context) {
      * deferred until a session actually starts.
      */
     fun appendSessionHeader(initials: String, location: String) {
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = currentTimestamp()
         val isIo = sessionType.equals(SessionActivity.SESSION_TYPE_IO, ignoreCase = true)
 
         // Create file and write CSV header if it doesn't exist yet
         val doc = getOutputDocumentFile(create = true, isNewAssets = false) ?: return
-        val isEmpty = context.contentResolver.openInputStream(doc.uri)?.use {
-            it.available() == 0
-        } ?: true
-        if (isEmpty) {
+        if (isDocumentEmpty(doc)) {
             context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
                 CSVWriter(OutputStreamWriter(os)).use { it.writeNext(getOutputHeaders(isNewAssets = false)) }
             }
@@ -487,16 +502,13 @@ class CsvManager(private val context: Context) {
     }
 
     fun appendAsset(asset: Asset): Asset {
-        val timestamp = TIME_FORMAT.format(Date())
+        val timestamp = asset.timestamp.ifEmpty { currentTimestamp() }
         val saved = asset.copy(timestamp = timestamp)
         val isIo = sessionType.equals(SessionActivity.SESSION_TYPE_IO, ignoreCase = true)
 
         if (saved.isNew) {
             val doc = getOutputDocumentFile(create = true, isNewAssets = true) ?: return saved
-            val isEmpty = context.contentResolver.openInputStream(doc.uri)?.use {
-                it.available() == 0
-            } ?: true
-            if (isEmpty) {
+            if (isDocumentEmpty(doc)) {
                 context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
                     CSVWriter(OutputStreamWriter(os)).use { it.writeNext(getOutputHeaders(isNewAssets = true)) }
                 }
@@ -513,7 +525,8 @@ class CsvManager(private val context: Context) {
                             saved.serial,
                             saved.timestamp,
                             saved.userInitials,
-                            saved.conditionScore.ifEmpty { "+1" }
+                            saved.conditionScore.ifEmpty { "+1" },
+                            saved.note
                         )
                     } else {
                         arrayOf(
@@ -523,7 +536,8 @@ class CsvManager(private val context: Context) {
                             saved.model,
                             saved.serial,
                             saved.timestamp,
-                            saved.userInitials
+                            saved.userInitials,
+                            saved.note
                         )
                     }
                     writer.writeNext(row)
@@ -531,10 +545,7 @@ class CsvManager(private val context: Context) {
             }
         } else {
             val doc = getOutputDocumentFile(create = true, isNewAssets = false) ?: return saved
-            val isEmpty = context.contentResolver.openInputStream(doc.uri)?.use {
-                it.available() == 0
-            } ?: true
-            if (isEmpty) {
+            if (isDocumentEmpty(doc)) {
                 context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
                     CSVWriter(OutputStreamWriter(os)).use { it.writeNext(getOutputHeaders(isNewAssets = false)) }
                 }
@@ -627,9 +638,16 @@ class CsvManager(private val context: Context) {
                 CSVReader(InputStreamReader(inputStream)).use { reader ->
                     var line: Array<String>?
                     var isHeader = true
+                    var scoreIdx = -1
+                    var noteIdx = -1
                     while (reader.readNext().also { line = it } != null) {
-                        if (isHeader) { isHeader = false; continue }
                         val row = line ?: continue
+                        if (isHeader) {
+                            scoreIdx = row.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
+                            noteIdx = row.indexOfFirst { it.equals("note", ignoreCase = true) }
+                            isHeader = false
+                            continue
+                        }
                         if (row.all { it.isBlank() }) continue
 
                         val assetNum = row.getOrElse(0) { "" }.uppercase()
@@ -639,8 +657,19 @@ class CsvManager(private val context: Context) {
                         val serial = row.getOrElse(4) { "" }
                         val time = row.getOrElse(5) { "" }
                         val initials = row.getOrElse(6) { currentSessionUser }
-                        val rawScore = row.getOrElse(7) { "" }
+
+                        val rawScore = when {
+                            scoreIdx != -1 -> row.getOrElse(scoreIdx) { "" }
+                            isIo -> row.getOrElse(7) { "" }
+                            else -> ""
+                        }
                         val score = if (isIo) rawScore.ifEmpty { "+1" } else rawScore
+
+                        val note = when {
+                            noteIdx != -1 -> row.getOrElse(noteIdx) { "" }
+                            isIo -> row.getOrElse(8) { "" }
+                            else -> row.getOrElse(7) { "" }
+                        }
 
                         assets.add(Asset(
                             assetNumber    = assetNum,
@@ -651,7 +680,8 @@ class CsvManager(private val context: Context) {
                             timestamp      = time,
                             isNew          = true,
                             userInitials   = initials,
-                            conditionScore = score
+                            conditionScore = score,
+                            note           = note
                         ))
                     }
                 }
@@ -678,11 +708,17 @@ class CsvManager(private val context: Context) {
         if (foundDoc != null) {
             val rows = mutableListOf<Array<String>>()
             var found = false
+            var isHeader = true
             context.contentResolver.openInputStream(foundDoc.uri)?.use { stream ->
                 CSVReader(InputStreamReader(stream)).use { reader ->
                     var line: Array<String>?
                     while (reader.readNext().also { line = it } != null) {
                         val row = line ?: continue
+                        if (isHeader) {
+                            isHeader = false
+                            rows.add(row)
+                            continue
+                        }
                         if (!found && row.isNotEmpty() && !row.any { it.equals("session", ignoreCase = true) } && row[0].equals(target, ignoreCase = true)) {
                             found = true
                             // Format: [assetNumber, department, timestamp, "found", conditionScore]
@@ -714,18 +750,28 @@ class CsvManager(private val context: Context) {
         if (newDoc != null) {
             val rows = mutableListOf<Array<String>>()
             var found = false
+            var isHeader = true
+            var scoreIdx = 7
             context.contentResolver.openInputStream(newDoc.uri)?.use { stream ->
                 CSVReader(InputStreamReader(stream)).use { reader ->
                     var line: Array<String>?
                     while (reader.readNext().also { line = it } != null) {
                         val row = line ?: continue
+                        if (isHeader) {
+                            val idx = row.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
+                            if (idx != -1) scoreIdx = idx
+                            isHeader = false
+                            rows.add(row)
+                            continue
+                        }
                         if (!found && row.isNotEmpty() && row[0].equals(target, ignoreCase = true)) {
                             found = true
-                            // Format: [assetNumber, department, make, model, serial, timestamp, initials, conditionScore]
-                            val newRow = when {
-                                row.size >= 8 -> row.copyOf().also { it[7] = score }
-                                row.size == 7 -> arrayOf(row[0], row[1], row[2], row[3], row[4], row[5], row[6], score)
-                                else -> row + score
+                            val newRow = if (row.size > scoreIdx) {
+                                row.copyOf().also { it[scoreIdx] = score }
+                            } else {
+                                val padded = Array(scoreIdx + 1) { i -> row.getOrElse(i) { "" } }
+                                padded[scoreIdx] = score
+                                padded
                             }
                             rows.add(newRow)
                         } else {

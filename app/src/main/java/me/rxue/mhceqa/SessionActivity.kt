@@ -33,7 +33,7 @@ class SessionActivity : AppCompatActivity() {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_SESSION_ACTIVE, false)
 
-        fun todayDateString(): String = DATE_FORMAT.format(Date())
+        fun todayDateString(): String = CsvManager.formatDate()
     }
 
     private val settingsLauncher = registerForActivityResult(

@@ -592,7 +592,7 @@ object DriveSyncManager {
      * When device goes online and a pending sync file exists, automatically triggers sync!
      */
     fun startNetworkMonitoring(context: Context, onAutoSyncTriggered: (fileName: String) -> Unit) {
-        if (networkCallback != null) return
+        stopNetworkMonitoring(context)
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
 
         val request = NetworkRequest.Builder()

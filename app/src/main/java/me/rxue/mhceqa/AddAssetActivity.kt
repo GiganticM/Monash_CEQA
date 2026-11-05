@@ -29,6 +29,7 @@ class AddAssetActivity : AppCompatActivity() {
         const val EXTRA_MODEL        = "extra_model"
         const val EXTRA_SERIAL       = "extra_serial"
         const val EXTRA_CONDITION_SCORE = "extra_condition_score"
+        const val EXTRA_NOTE         = "extra_note"
         const val EXTRA_IS_IO        = "extra_is_io"
     }
 
@@ -55,7 +56,7 @@ class AddAssetActivity : AppCompatActivity() {
                     isIo = isIo,
                     scannedBarcode = latestBarcodeState.value,
                     onClearBarcode = { latestBarcodeState.value = null },
-                    onSave = { dept, make, model, serial, conditionScore ->
+                    onSave = { dept, make, model, serial, conditionScore, note ->
                         val resultIntent = Intent().apply {
                             putExtra(EXTRA_ASSET_NUMBER, assetNumber)
                             putExtra(EXTRA_DEPARTMENT, dept)
@@ -63,6 +64,7 @@ class AddAssetActivity : AppCompatActivity() {
                             putExtra(EXTRA_MODEL, model)
                             putExtra(EXTRA_SERIAL, serial)
                             putExtra(EXTRA_CONDITION_SCORE, conditionScore)
+                            putExtra(EXTRA_NOTE, note)
                         }
                         setResult(Activity.RESULT_OK, resultIntent)
                         finish()

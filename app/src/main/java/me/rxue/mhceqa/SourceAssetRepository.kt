@@ -93,11 +93,22 @@ object SourceAssetRepository {
             }
         }
 
-        val result = deferred.await()
+        val result = try {
+            deferred.await()
+        } catch (e: Exception) {
+            mutex.withLock {
+                if (loadingDeferred === deferred) {
+                    loadingDeferred = null
+                }
+            }
+            throw e
+        }
         mutex.withLock {
             cachedLookupMap = result.first
             cachedItemCount = result.second
-            loadingDeferred = null
+            if (loadingDeferred === deferred) {
+                loadingDeferred = null
+            }
         }
         return result
     }
@@ -166,8 +177,15 @@ object SourceAssetRepository {
                     assetCount++
                     val record = CsvManager.SourceRecord(assetNumber, dept, routinePeriod)
                     addToMap(assetNumber, record)
-                    addToMap(serial, record)
-                    addToMap(barcode, record)
+                    if (serial.isNotEmpty() && !serial.equals(assetNumber, ignoreCase = true)) {
+                        addToMap(serial, record)
+                    }
+                    if (barcode.isNotEmpty() &&
+                        !barcode.equals(assetNumber, ignoreCase = true) &&
+                        !barcode.equals(serial, ignoreCase = true)
+                    ) {
+                        addToMap(barcode, record)
+                    }
                 }
             }
         }
@@ -178,19 +196,25 @@ object SourceAssetRepository {
     }
 
     /**
-     * Fast single-pass CSV line tokenizer that handles standard comma separation and quoted fields.
+     * Fast single-pass CSV line tokenizer that handles standard comma separation and RFC 4180 quoted fields.
      */
     private fun parseLine(line: String, out: ArrayList<String>) {
         out.clear()
         val len = line.length
         var inQuotes = false
         val sb = StringBuilder(32)
+        var i = 0
 
-        for (i in 0 until len) {
+        while (i < len) {
             val c = line[i]
             when {
                 c == '"' -> {
-                    inQuotes = !inQuotes
+                    if (inQuotes && i + 1 < len && line[i + 1] == '"') {
+                        sb.append('"')
+                        i++
+                    } else {
+                        inQuotes = !inQuotes
+                    }
                 }
                 c == ',' && !inQuotes -> {
                     out.add(sb.toString())
@@ -200,6 +224,7 @@ object SourceAssetRepository {
                     sb.append(c)
                 }
             }
+            i++
         }
         out.add(sb.toString())
     }

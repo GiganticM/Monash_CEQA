@@ -52,6 +52,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +94,8 @@ import me.rxue.mhceqa.ui.theme.TerminalSelectionBackground
 import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
 
+private val USER_SPLIT_REGEX = Regex("[\\s,/+\\-&]+")
+
 /**
  * Checks if the scan record matches the currently logged in session user.
  * Supports composite initials (e.g. "RX AS" matches records scanned under "RX", "AS", or "RX AS").
@@ -104,10 +107,10 @@ fun matchesUser(assetInitials: String, currentInitials: String): Boolean {
     if (trimmedCurrent.isEmpty() || trimmedAsset.isEmpty()) return true
     if (trimmedCurrent == trimmedAsset) return true
 
-    val currentTokens = trimmedCurrent.split(Regex("[\\s,/+\\-&]+")).filter { it.isNotBlank() }.toSet()
-    val assetTokens = trimmedAsset.split(Regex("[\\s,/+\\-&]+")).filter { it.isNotBlank() }.toSet()
+    val currentTokens = trimmedCurrent.split(USER_SPLIT_REGEX).filter { it.isNotBlank() }
+    val assetTokens = trimmedAsset.split(USER_SPLIT_REGEX).filter { it.isNotBlank() }
 
-    return currentTokens.intersect(assetTokens).isNotEmpty()
+    return currentTokens.any { it in assetTokens }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -517,22 +520,27 @@ fun MainScannerScreen(
                         .fillMaxSize()
                         .background(TerminalBackground)
                 ) {
-                    val allScansCount = scanLog.count { !it.isSessionHeader }
-                    val myScansCount = scanLog.count { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) }
-
-                    val scannedAssets = if (showAllScans) {
-                        scanLog.filter { !it.isSessionHeader }
-                    } else {
-                        scanLog.filter { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) }
+                    val allScansCount by remember {
+                        derivedStateOf { scanLog.count { !it.isSessionHeader } }
+                    }
+                    val myScansCount by remember(userInitials) {
+                        derivedStateOf { scanLog.count { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) } }
                     }
 
                     // Strict reverse-chronological ordering: newest scans appear at the top regardless of NEW or FOUND status.
-                    val displayAssets = remember(scannedAssets) {
-                        scannedAssets.withIndex().sortedWith { a, b ->
-                            val timeComp = CsvManager.normalizeTimestamp(b.value.timestamp)
-                                .compareTo(CsvManager.normalizeTimestamp(a.value.timestamp))
-                            if (timeComp != 0) timeComp else b.index.compareTo(a.index)
-                        }.map { it.value }
+                    val displayAssets by remember(showAllScans, userInitials) {
+                        derivedStateOf {
+                            val filtered = if (showAllScans) {
+                                scanLog.filter { !it.isSessionHeader }
+                            } else {
+                                scanLog.filter { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) }
+                            }
+                            filtered.withIndex().sortedWith { a, b ->
+                                val timeComp = CsvManager.normalizeTimestamp(b.value.timestamp)
+                                    .compareTo(CsvManager.normalizeTimestamp(a.value.timestamp))
+                                if (timeComp != 0) timeComp else b.index.compareTo(a.index)
+                            }.map { it.value }
+                        }
                     }
 
                     // Terminal Header Bar
@@ -659,7 +667,10 @@ fun MainScannerScreen(
                         LazyColumn(
                             modifier = Modifier.weight(1f)
                         ) {
-                            itemsIndexed(displayAssets) { index, asset ->
+                            itemsIndexed(
+                                items = displayAssets,
+                                key = { index, asset -> "${asset.assetNumber}_${asset.timestamp}_$index" }
+                            ) { index, asset ->
                                 ScanLogCard(
                                     asset = asset,
                                     fontSizeSp = fontSizeSp,

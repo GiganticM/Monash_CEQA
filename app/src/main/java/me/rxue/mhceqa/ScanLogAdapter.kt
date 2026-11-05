@@ -136,11 +136,13 @@ class ScanLogAdapter(
 
         // Clicks
         holder.itemView.setOnLongClickListener {
-            if (!selectionMode) enterSelectionMode(holder.adapterPosition)
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION && !selectionMode) enterSelectionMode(pos)
             true
         }
         holder.itemView.setOnClickListener {
-            if (selectionMode) toggleSelection(holder.adapterPosition)
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION && selectionMode) toggleSelection(pos)
         }
 
         // Content
@@ -168,7 +170,7 @@ class ScanLogAdapter(
         if (asset.isNew) {
             holder.tvType.text = "NEW"
             holder.tvType.setTextColor(Color.parseColor(COLOR_NEW))
-            val details = listOf(asset.department, asset.make, asset.model, asset.serial)
+            val details = listOf(asset.department, asset.make, asset.model, asset.serial, asset.note)
                 .filter { it.isNotBlank() }.joinToString(" │ ")
             if (details.isNotBlank()) {
                 holder.tvDetails.text = details

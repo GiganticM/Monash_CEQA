@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private val isScanTabActive get() = (selectedTab == 0)
     private var conditionScorePrompt by mutableStateOf<Pair<String, Asset>?>(null)
     private var showEndSessionPrompt by mutableStateOf(false)
+    private var showAboutPrompt by mutableStateOf(false)
 
     private val snackbarHostState = SnackbarHostState()
     private val focusRequester = FocusRequester()
@@ -170,6 +171,7 @@ class MainActivity : AppCompatActivity() {
             val data = result.data ?: return@registerForActivityResult
             val assetNumber = data.getStringExtra(AddAssetActivity.EXTRA_ASSET_NUMBER) ?: ""
             val conditionScore = data.getStringExtra(AddAssetActivity.EXTRA_CONDITION_SCORE) ?: ""
+            val note = data.getStringExtra(AddAssetActivity.EXTRA_NOTE) ?: ""
             val asset = Asset(
                 assetNumber    = assetNumber,
                 department     = data.getStringExtra(AddAssetActivity.EXTRA_DEPARTMENT) ?: "",
@@ -178,7 +180,8 @@ class MainActivity : AppCompatActivity() {
                 serial         = data.getStringExtra(AddAssetActivity.EXTRA_SERIAL) ?: "",
                 isNew          = true,
                 userInitials   = userInitials,
-                conditionScore = conditionScore
+                conditionScore = conditionScore,
+                note           = note
             )
             saveAsset(asset)
             sendViaBluetooth(assetNumber)
@@ -312,12 +315,51 @@ class MainActivity : AppCompatActivity() {
                         }
                     )
                 }
+
+                if (showAboutPrompt) {
+                    val versionName = try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0)).versionName
+                        } else {
+                            @Suppress("DEPRECATION")
+                            packageManager.getPackageInfo(packageName, 0).versionName
+                        }
+                    } catch (_: Exception) {
+                        "2.1"
+                    }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showAboutPrompt = false },
+                        title = {
+                            androidx.compose.material3.Text(
+                                text = "About ${getString(R.string.app_name)}",
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            androidx.compose.material3.Text(
+                                text = "Version: $versionName\n\nBuilt by: Rui Xue"
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { showAboutPrompt = false }
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = "OK",
+                                    color = me.rxue.mhceqa.ui.theme.PrimaryBlue,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        }
+                    )
+                }
             }
         }
     }
 
     override fun onPause() {
         super.onPause()
+        DriveSyncManager.stopNetworkMonitoring(this)
         if (::btManager.isInitialized)
             prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
         try {
@@ -494,13 +536,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupScanLog() {
         lifecycleScope.launch {
-            val saved = withContext(Dispatchers.IO) {
+            val (saved, resolvedOutputPath) = withContext(Dispatchers.IO) {
                 if (prefs.getBoolean(SessionActivity.KEY_NEEDS_SESSION_HEADER, false)) {
                     csvManager.appendSessionHeader(userInitials, userLocation)
                     prefs.edit().putBoolean(SessionActivity.KEY_NEEDS_SESSION_HEADER, false).apply()
                 }
-                csvManager.readSavedAssets()
+                csvManager.readSavedAssets() to csvManager.outputFilePath
             }
+            outputPath = resolvedOutputPath
             scanLog.clear()
             scanLog.addAll(saved)
             reResolveAssets()
@@ -564,8 +607,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             else -> {
-                val existing = scanLog.firstOrNull { it.assetNumber.equals(query, ignoreCase = true) }
-                    ?: csvManager.readSavedAssets().firstOrNull { it.assetNumber.equals(query, ignoreCase = true) }
+                val existing = scanLog.firstOrNull { !it.isSessionHeader && it.assetNumber.equals(query, ignoreCase = true) }
                 if (existing != null) {
                     searchInput = ""
                     sendViaBluetooth(query)
@@ -617,8 +659,7 @@ class MainActivity : AppCompatActivity() {
     private fun resolveAndSave(record: CsvManager.SourceRecord) {
         searchInput = ""
         sendViaBluetooth(record.assetNumber)
-        val existing = scanLog.firstOrNull { it.assetNumber.equals(record.assetNumber, ignoreCase = true) }
-            ?: csvManager.readSavedAssets().firstOrNull { it.assetNumber.equals(record.assetNumber, ignoreCase = true) }
+        val existing = scanLog.firstOrNull { !it.isSessionHeader && it.assetNumber.equals(record.assetNumber, ignoreCase = true) }
         if (existing != null) {
             if (isIoSession) {
                 promptConditionScoreDialog(record.assetNumber, existing)
@@ -654,7 +695,7 @@ class MainActivity : AppCompatActivity() {
             val updated = csvManager.updateAssetConditionScore(assetNumber, score)
             withContext(Dispatchers.Main) {
                 if (updated) {
-                    val idx = scanLog.indexOfFirst { it.assetNumber.equals(assetNumber, ignoreCase = true) }
+                    val idx = scanLog.indexOfFirst { !it.isSessionHeader && it.assetNumber.equals(assetNumber, ignoreCase = true) }
                     if (idx != -1) {
                         scanLog[idx] = scanLog[idx].copy(conditionScore = score)
                     }
@@ -667,12 +708,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveAsset(asset: Asset) {
+        val stamped = asset.copy(timestamp = CsvManager.currentTimestamp())
+        scanLog.add(stamped)
+        updateLastScannedDisplay()
         lifecycleScope.launch(Dispatchers.IO) {
-            val saved = csvManager.appendAsset(asset)
+            csvManager.appendAsset(stamped)
+            val resolvedPath = csvManager.outputFilePath
             withContext(Dispatchers.Main) {
-                scanLog.add(saved)
-                outputPath = csvManager.outputFilePath
-                updateLastScannedDisplay()
+                outputPath = resolvedPath
             }
         }
     }
@@ -965,11 +1008,11 @@ class MainActivity : AppCompatActivity() {
         showEndSessionPrompt = true
     }
 
+    @Suppress("DEPRECATION")
     private fun performEndSessionSync() {
         val autoSync = DriveSyncManager.isAutoSyncEnabled(this)
         val webhookUrl = DriveSyncManager.getWebhookUrl(this)
         if (autoSync && webhookUrl.isNotBlank()) {
-            @Suppress("DEPRECATION")
             val progressDialog = android.app.ProgressDialog(this).apply {
                 setMessage("Connecting to Google Drive...")
                 setCancelable(false)
@@ -1037,6 +1080,7 @@ class MainActivity : AppCompatActivity() {
         finish()
     }
 
+    @Suppress("DEPRECATION")
     private fun triggerDriveSync(manual: Boolean = false) {
         val webhookUrl = DriveSyncManager.getWebhookUrl(this)
         if (webhookUrl.isBlank()) {
@@ -1047,7 +1091,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            @Suppress("DEPRECATION")
             val progressDialog = if (manual) {
                 android.app.ProgressDialog(this@MainActivity).apply {
                     setMessage("Connecting to Google Drive...")
@@ -1152,15 +1195,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAboutDialog() {
-        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
-        else
-            @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0)
-
-        AlertDialog.Builder(this)
-            .setTitle("About ${getString(R.string.app_name)}")
-            .setMessage("Version: ${packageInfo.versionName}\n\nBuilt by: Rui Xue")
-            .setPositiveButton("OK", null)
-            .show()
+        showAboutPrompt = true
     }
 }

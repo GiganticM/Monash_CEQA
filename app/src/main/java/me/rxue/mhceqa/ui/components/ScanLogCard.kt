@@ -266,6 +266,44 @@ fun ScanLogCard(
                             )
                         }
                     }
+
+                    // Row 5: Score (IO session)
+                    if (asset.conditionScore.isNotBlank()) {
+                        Row(modifier = Modifier.padding(vertical = 1.dp)) {
+                            Text(
+                                text = "Score: ",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = detailFontSize,
+                                fontWeight = FontWeight.Medium,
+                                color = TerminalGreenSubtle
+                            )
+                            Text(
+                                text = asset.conditionScore,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = detailFontSize,
+                                color = TerminalGreenSecondary
+                            )
+                        }
+                    }
+
+                    // Row 6: Note
+                    if (asset.note.isNotBlank()) {
+                        Row(modifier = Modifier.padding(vertical = 1.dp)) {
+                            Text(
+                                text = "Note:  ",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = detailFontSize,
+                                fontWeight = FontWeight.Medium,
+                                color = TerminalGreenSubtle
+                            )
+                            Text(
+                                text = asset.note,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = detailFontSize,
+                                color = TerminalGreenSecondary
+                            )
+                        }
+                    }
                 }
             }
         }

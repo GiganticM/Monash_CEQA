@@ -88,8 +88,8 @@ class BluetoothSppManager(private val context: Context) {
             } catch (_: IOException) {
                 // Socket closed - either by us (disconnect/cancelConnect) or remote drop
             }
-            // Only fire callback if this was an unexpected drop (socket still set = we didn't close it)
-            if (socket != null) {
+            // Only fire callback if this was an unexpected drop on the current active socket
+            if (socket === s) {
                 Log.i(TAG, "Reader thread detected disconnection")
                 disconnect()
                 onDisconnected?.invoke()
