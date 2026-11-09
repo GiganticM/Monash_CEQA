@@ -54,6 +54,9 @@ class SessionActivity : AppCompatActivity() {
             SourceAssetRepository.preload(this, savedUri, savedName)
         }
 
+        // Silently upload & archive any pending CSV files left over from previous sessions
+        DriveSyncManager.triggerSilentBackgroundSync(this, archiveToday = !isSessionActive(this))
+
         if (isSessionActive(this)) {
             startActivity(Intent(this, MainActivity::class.java))
             finish()

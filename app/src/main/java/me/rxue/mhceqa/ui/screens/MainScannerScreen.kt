@@ -388,9 +388,19 @@ fun MainScannerScreen(
 
                     OutlinedTextField(
                         value = searchInput,
-                        onValueChange = { onSearchInputChange(it.uppercase()) },
-                        label = { Text("Asset Number, S/N or Barcode") },
+                        onValueChange = {
+                            onSearchInputChange(it.replace("\n", "").replace("\r", "").uppercase())
+                        },
+                        label = {
+                            Text(
+                                text = "Asset Number, S/N or Barcode",
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        },
                         singleLine = true,
+                        maxLines = 1,
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Characters,
                             imeAction = ImeAction.Search

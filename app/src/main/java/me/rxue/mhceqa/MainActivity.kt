@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity() {
 
     private var connectJob: Job? = null
     private var reconnectJob: Job? = null
+    private var idleSyncJob: Job? = null
 
     private val scanBuffer = StringBuilder()
     private var manualCsvPickInProgress = false
@@ -269,10 +270,11 @@ class MainActivity : AppCompatActivity() {
                     ConditionScoreDialog(
                         assetNumber = assetNumber,
                         initialScore = existing.conditionScore.ifEmpty { "+1" },
+                        initialNote = existing.note,
                         onDismiss = { conditionScorePrompt = null },
-                        onSave = { score ->
+                        onSave = { score, note ->
                             conditionScorePrompt = null
-                            saveConditionScore(assetNumber, score)
+                            saveConditionScore(assetNumber, score, note)
                         }
                     )
                 }
@@ -359,6 +361,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        idleSyncJob?.cancel()
+        if (::csvManager.isInitialized) {
+            DriveSyncManager.triggerSilentBackgroundSync(this, archiveToday = false)
+        }
         DriveSyncManager.stopNetworkMonitoring(this)
         if (::btManager.isInitialized)
             prefs.edit().putBoolean(KEY_WAS_CONNECTED, btManager.isConnected).apply()
@@ -376,6 +382,8 @@ class MainActivity : AppCompatActivity() {
 
         val savedDate = prefs.getString(SessionActivity.KEY_SESSION_DATE, null)
         if (savedDate != null && savedDate != SessionActivity.todayDateString()) {
+            // Session expired across midnight/days: silently upload & archive previous session's files
+            DriveSyncManager.triggerSilentBackgroundSync(this, archiveToday = true)
             prefs.edit()
                 .putBoolean(SessionActivity.KEY_SESSION_ACTIVE, false)
                 .remove(SessionActivity.KEY_USER_INITIALS)
@@ -394,6 +402,9 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        // Catch up on any unarchived files from previous days or unsynced scans
+        DriveSyncManager.triggerSilentBackgroundSync(this, archiveToday = false)
 
         val filter = IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -577,18 +588,9 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Search & Asset Handling ──────────────────────────────────────────────
 
-    private val assetGeniusPattern = Regex("[NX]\\d{8}$")
-
-    private fun extractAssetNumber(raw: String): String {
-        if (raw.length == 35) {
-            val match = assetGeniusPattern.find(raw)
-            if (match != null) return match.value
-        }
-        return raw
-    }
-
     private fun performSearch(rawQuery: String) {
-        val query = extractAssetNumber(rawQuery)
+        val decoded = BarcodeHelper.decodeBarcode(rawQuery)
+        val query = decoded.code
         val matches = lookupMap[query.lowercase()]
 
         when {
@@ -627,6 +629,9 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     val intent = Intent(this, AddAssetActivity::class.java).apply {
                         putExtra(AddAssetActivity.EXTRA_ASSET_NUMBER, query)
+                        if (!decoded.extractedSerial.isNullOrBlank()) {
+                            putExtra(AddAssetActivity.EXTRA_INITIAL_SERIAL, decoded.extractedSerial)
+                        }
                         putExtra(AddAssetActivity.EXTRA_IS_IO, isIoSession)
                     }
                     addAssetLauncher.launch(intent)
@@ -690,16 +695,17 @@ class MainActivity : AppCompatActivity() {
         conditionScorePrompt = Pair(assetNumber, existing)
     }
 
-    private fun saveConditionScore(assetNumber: String, score: String) {
+    private fun saveConditionScore(assetNumber: String, score: String, note: String = "") {
         lifecycleScope.launch(Dispatchers.IO) {
-            val updated = csvManager.updateAssetConditionScore(assetNumber, score)
+            val updated = csvManager.updateAssetConditionScore(assetNumber, score, note)
             withContext(Dispatchers.Main) {
                 if (updated) {
                     val idx = scanLog.indexOfFirst { !it.isSessionHeader && it.assetNumber.equals(assetNumber, ignoreCase = true) }
                     if (idx != -1) {
-                        scanLog[idx] = scanLog[idx].copy(conditionScore = score)
+                        scanLog[idx] = scanLog[idx].copy(conditionScore = score, note = note)
                     }
                     showSnackbar("✓ Score ($score) saved for '$assetNumber'", Color(0xFF2E7D32))
+                    scheduleIdleSilentSync()
                 } else {
                     showSnackbar("⚠ Could not save score for '$assetNumber'", Color(0xFFE65100))
                 }
@@ -716,7 +722,16 @@ class MainActivity : AppCompatActivity() {
             val resolvedPath = csvManager.outputFilePath
             withContext(Dispatchers.Main) {
                 outputPath = resolvedPath
+                scheduleIdleSilentSync()
             }
+        }
+    }
+
+    private fun scheduleIdleSilentSync() {
+        idleSyncJob?.cancel()
+        idleSyncJob = lifecycleScope.launch {
+            kotlinx.coroutines.delay(30_000L)
+            DriveSyncManager.triggerSilentBackgroundSync(this@MainActivity, archiveToday = false)
         }
     }
 
@@ -1169,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (manual) showSnackbar("☁️ Checking Google Drive for updated asset list...")
         lifecycleScope.launch {
-            when (val result = DriveSyncManager.checkAndUpdateSourceAssetList(this@MainActivity, csvManager, force = manual)) {
+            when (val result = DriveSyncManager.checkAndUpdateSourceAssetList(this@MainActivity, csvManager, force = false)) {
                 is DriveSyncManager.SourceAssetUpdateResult.Updated -> {
                     sourceCsvName = result.fileName
                     csvItemCount = result.assetCount

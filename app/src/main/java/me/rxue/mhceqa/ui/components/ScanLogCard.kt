@@ -177,6 +177,28 @@ fun ScanLogCard(
                 )
             }
 
+            // Found asset IO score / note row (shown when a note or non-default score is recorded on a FOUND asset)
+            if (!asset.isNew && !asset.isSessionHeader && (asset.note.isNotBlank() || (asset.conditionScore.isNotBlank() && asset.conditionScore != "+1"))) {
+                val extraInfo = buildString {
+                    if (asset.conditionScore.isNotBlank() && asset.conditionScore != "+1") {
+                        append("Score: ${asset.conditionScore}")
+                    }
+                    if (asset.note.isNotBlank()) {
+                        if (isNotEmpty()) append(" │ ")
+                        append("Note: ${asset.note}")
+                    }
+                }
+                Text(
+                    text = extraInfo,
+                    fontFamily = JetBrainsMonoFontFamily,
+                    fontSize = (fontSizeSp - 2).coerceAtLeast(9.5f).sp,
+                    color = TerminalGreenSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 54.dp, top = 2.dp)
+                )
+            }
+
         // 4 distinct rows for NEW assets (dept, make, model and S/N) - collapsible
         if (asset.isNew) {
             AnimatedVisibility(

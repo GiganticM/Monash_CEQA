@@ -24,6 +24,7 @@ class AddAssetActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_ASSET_NUMBER = "extra_asset_number"
+        const val EXTRA_INITIAL_SERIAL = "extra_initial_serial"
         const val EXTRA_DEPARTMENT   = "extra_department"
         const val EXTRA_MAKE         = "extra_make"
         const val EXTRA_MODEL        = "extra_model"
@@ -47,18 +48,20 @@ class AddAssetActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val assetNumber = intent.getStringExtra(EXTRA_ASSET_NUMBER) ?: ""
+        val initialSerial = intent.getStringExtra(EXTRA_INITIAL_SERIAL) ?: ""
         val isIo = intent.getBooleanExtra(EXTRA_IS_IO, false)
 
         setContent {
             MonashCeqaTheme {
                 AddAssetScreen(
                     assetNumber = assetNumber,
+                    initialSerial = initialSerial,
                     isIo = isIo,
                     scannedBarcode = latestBarcodeState.value,
                     onClearBarcode = { latestBarcodeState.value = null },
-                    onSave = { dept, make, model, serial, conditionScore, note ->
+                    onSave = { finalAssetNum, dept, make, model, serial, conditionScore, note ->
                         val resultIntent = Intent().apply {
-                            putExtra(EXTRA_ASSET_NUMBER, assetNumber)
+                            putExtra(EXTRA_ASSET_NUMBER, finalAssetNum)
                             putExtra(EXTRA_DEPARTMENT, dept)
                             putExtra(EXTRA_MAKE, make)
                             putExtra(EXTRA_MODEL, model)

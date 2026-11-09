@@ -11,11 +11,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -27,7 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rxue.mhceqa.ui.theme.PrimaryBlue
 import me.rxue.mhceqa.ui.theme.TextDark
@@ -54,13 +67,20 @@ val CONDITION_SCORE_DESCRIPTIONS = listOf(
 fun ConditionScoreDialog(
     assetNumber: String,
     initialScore: String,
+    initialNote: String = "",
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onSave: (score: String, note: String) -> Unit
 ) {
     var selectedScore by remember(assetNumber, initialScore) {
         mutableStateOf(initialScore.ifEmpty { "+1" })
     }
+    var note by remember(assetNumber, initialNote) {
+        mutableStateOf(initialNote)
+    }
     val scoreOptions = listOf("-2", "-1", "0", "+1", "+2")
+
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -71,7 +91,11 @@ fun ConditionScoreDialog(
             )
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     text = "Asset: $assetNumber",
                     fontWeight = FontWeight.SemiBold,
@@ -84,7 +108,7 @@ fun ConditionScoreDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSubtle
                 )
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -115,7 +139,7 @@ fun ConditionScoreDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Active description highlight
                 Surface(
@@ -131,6 +155,62 @@ fun ConditionScoreDialog(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Note input
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { newValue ->
+                        if (newValue.contains('\n')) {
+                            note = newValue.replace("\n", " ").replace("\r", "")
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                        } else {
+                            note = newValue
+                        }
+                    },
+                    label = {
+                        Text(
+                            text = "Note (Optional)",
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    placeholder = {
+                        Text("Add any notes about this asset")
+                    },
+                    singleLine = false,
+                    minLines = 2,
+                    maxLines = 3,
+                    trailingIcon = {
+                        if (note.isNotEmpty()) {
+                            IconButton(onClick = { note = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            keyboardController?.hide()
+                            focusManager.clearFocus()
+                        }
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryBlue,
+                        focusedLabelColor = PrimaryBlue
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -168,7 +248,7 @@ fun ConditionScoreDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(selectedScore) }
+                onClick = { onSave(selectedScore, note.trim()) }
             ) {
                 Text("Save Score", color = PrimaryBlue, fontWeight = FontWeight.Bold)
             }

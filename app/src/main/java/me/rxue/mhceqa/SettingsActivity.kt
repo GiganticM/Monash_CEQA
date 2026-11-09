@@ -120,7 +120,7 @@ class SettingsActivity : AppCompatActivity() {
                     onCheckSourceUpdate = { folderId, onComplete ->
                         DriveSyncManager.saveSourceFolderId(this@SettingsActivity, folderId)
                         lifecycleScope.launch {
-                            when (val result = DriveSyncManager.checkAndUpdateSourceAssetList(this@SettingsActivity, csvManager, force = true)) {
+                            when (val result = DriveSyncManager.checkAndUpdateSourceAssetList(this@SettingsActivity, csvManager, force = false)) {
                                 is DriveSyncManager.SourceAssetUpdateResult.Updated -> {
                                     currentSourceName = result.fileName
                                     sourceCsvChanged = true

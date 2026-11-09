@@ -8,7 +8,10 @@ import android.net.NetworkRequest
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -20,6 +23,9 @@ import java.net.URL
 object DriveSyncManager {
 
     private const val TAG = "DriveSyncManager"
+
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val syncMutex = Mutex()
 
     const val PREFS_NAME             = "asset_scanner_prefs"
     const val KEY_WEBHOOK_URL        = "drive_webhook_url"
@@ -237,158 +243,259 @@ object DriveSyncManager {
         folderId: String? = null,
         onProgress: ((String) -> Unit)? = null
     ): BatchSyncResult = withContext(Dispatchers.IO) {
-        val webhookUrl = getWebhookUrl(context)
-        if (webhookUrl.isBlank()) {
-            return@withContext BatchSyncResult(
-                totalFiles = 0,
-                successCount = 0,
-                failedCount = 0,
-                message = "Google Drive Webhook URL not configured. Set it in Settings."
-            )
-        }
-
-        onProgress?.invoke("Connecting to Google Drive...")
-
-        // Ensure paired files (e.g. qa_...csv and qa_..._NEW.csv, or io_...csv and io_..._NEW.csv)
-        // exist and are present in the output folder
-        csvManager.ensurePairedOutputFiles()
-
-        val pendingFiles = csvManager.getAllPendingOutputCsvFiles()
-        if (pendingFiles.isEmpty()) {
-            return@withContext BatchSyncResult(
-                totalFiles = 0,
-                successCount = 0,
-                failedCount = 0,
-                message = "No CSV files found to sync in folder."
-            )
-        }
-
-        if (!isOnline(context)) {
-            setPendingSyncFile(context, "batch_${pendingFiles.size}")
-            return@withContext BatchSyncResult(
-                totalFiles = pendingFiles.size,
-                successCount = 0,
-                failedCount = pendingFiles.size,
-                message = "Offline: ${pendingFiles.size} file(s) queued for sync when online."
-            )
-        }
-
-        // Group files into pairs based on their session/date base name:
-        // e.g. "1_qa_26-10-2026.csv" and "1_qa_26-10-2026_NEW.csv" form a single pair.
-        val pairGroups = mutableMapOf<String, MutableList<androidx.documentfile.provider.DocumentFile>>()
-        for (fileDoc in pendingFiles) {
-            val name = fileDoc.name ?: continue
-            val baseKey = when {
-                name.endsWith("_NEW.csv", ignoreCase = true) -> name.substring(0, name.length - 8)
-                name.endsWith(".csv", ignoreCase = true) -> name.substring(0, name.length - 4)
-                else -> name
+        syncMutex.withLock {
+            val webhookUrl = getWebhookUrl(context)
+            if (webhookUrl.isBlank()) {
+                return@withLock BatchSyncResult(
+                    totalFiles = 0,
+                    successCount = 0,
+                    failedCount = 0,
+                    message = "Google Drive Webhook URL not configured. Set it in Settings."
+                )
             }
-            pairGroups.getOrPut(baseKey) { mutableListOf() }.add(fileDoc)
-        }
 
-        var successCount = 0
-        var failedCount = 0
-        var bypassedCount = 0
+            onProgress?.invoke("Connecting to Google Drive...")
 
-        val filesToUpload = mutableListOf<Triple<androidx.documentfile.provider.DocumentFile, String, String>>()
+            // Ensure paired files (e.g. qa_...csv and qa_..._NEW.csv, or io_...csv and io_..._NEW.csv)
+            // exist and are present in the output folder
+            csvManager.ensurePairedOutputFiles()
 
-        for ((pairKey, filesInPair) in pairGroups) {
-            // Sort so base file is uploaded first, then NEW file:
-            // [qa_...csv, qa_..._NEW.csv]
-            val sortedPairFiles = filesInPair.sortedBy { if (it.name?.endsWith("_NEW.csv", ignoreCase = true) == true) 1 else 0 }
+            val pendingFiles = csvManager.getAllPendingOutputCsvFiles()
+            if (pendingFiles.isEmpty()) {
+                return@withLock BatchSyncResult(
+                    totalFiles = 0,
+                    successCount = 0,
+                    failedCount = 0,
+                    message = "No CSV files found to sync in folder."
+                )
+            }
 
-            val fileData = sortedPairFiles.mapNotNull { doc ->
-                val fileName = doc.name ?: return@mapNotNull null
-                val content = try {
-                    context.contentResolver.openInputStream(doc.uri)?.use { stream ->
-                        stream.bufferedReader(Charsets.UTF_8).readText()
-                    } ?: ""
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed reading $fileName", e)
-                    null
+            if (!isOnline(context)) {
+                setPendingSyncFile(context, "batch_${pendingFiles.size}")
+                return@withLock BatchSyncResult(
+                    totalFiles = pendingFiles.size,
+                    successCount = 0,
+                    failedCount = pendingFiles.size,
+                    message = "Offline: ${pendingFiles.size} file(s) queued for sync when online."
+                )
+            }
+
+            // Group files into pairs based on their session/date base name:
+            // e.g. "1_qa_26-10-2026.csv" and "1_qa_26-10-2026_NEW.csv" form a single pair.
+            val pairGroups = mutableMapOf<String, MutableList<androidx.documentfile.provider.DocumentFile>>()
+            for (fileDoc in pendingFiles) {
+                val name = fileDoc.name ?: continue
+                val baseKey = when {
+                    name.endsWith("_NEW.csv", ignoreCase = true) -> name.substring(0, name.length - 8)
+                    name.endsWith(".csv", ignoreCase = true) -> name.substring(0, name.length - 4)
+                    else -> name
                 }
-                if (content == null) null
-                else Triple(doc, fileName, content)
+                pairGroups.getOrPut(baseKey) { mutableListOf() }.add(fileDoc)
             }
 
-            if (fileData.size != sortedPairFiles.size) {
-                failedCount += (sortedPairFiles.size - fileData.size)
-                continue
+            var successCount = 0
+            var failedCount = 0
+            var bypassedCount = 0
+
+            val filesToUpload = mutableListOf<Triple<androidx.documentfile.provider.DocumentFile, String, String>>()
+
+            for ((pairKey, filesInPair) in pairGroups) {
+                // Sort so base file is uploaded first, then NEW file:
+                // [qa_...csv, qa_..._NEW.csv]
+                val sortedPairFiles = filesInPair.sortedBy { if (it.name?.endsWith("_NEW.csv", ignoreCase = true) == true) 1 else 0 }
+
+                val fileData = sortedPairFiles.mapNotNull { doc ->
+                    val fileName = doc.name ?: return@mapNotNull null
+                    val content = try {
+                        context.contentResolver.openInputStream(doc.uri)?.use { stream ->
+                            stream.bufferedReader(Charsets.UTF_8).readText()
+                        } ?: ""
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed reading $fileName", e)
+                        null
+                    }
+                    if (content == null) null
+                    else Triple(doc, fileName, content)
+                }
+
+                if (fileData.size != sortedPairFiles.size) {
+                    failedCount += (sortedPairFiles.size - fileData.size)
+                    continue
+                }
+
+                // Check if all files in the pair are unmodified since the last sync
+                val allUnmodified = fileData.all { (_, fileName, content) ->
+                    val currentHash = computeSha256(content)
+                    val lastSyncedHash = getLastSyncedHash(context, fileName)
+                    lastSyncedHash != null && lastSyncedHash == currentHash
+                }
+
+                if (allUnmodified) {
+                    Log.i(TAG, "Pair $pairKey is unmodified since last sync. Bypassing upload.")
+                    bypassedCount += fileData.size
+                    fileData.forEach { (doc, _, _) ->
+                        csvManager.archiveFile(doc)
+                    }
+                    continue
+                }
+
+                // If any file in the pair was modified, queue both files for upload
+                filesToUpload.addAll(fileData)
             }
 
-            // Check if all files in the pair are unmodified since the last sync
-            val allUnmodified = fileData.all { (_, fileName, content) ->
+            val totalToUpload = filesToUpload.size
+            var uploadIndex = 0
+
+            for ((doc, fileName, content) in filesToUpload) {
+                uploadIndex++
+                onProgress?.invoke("Uploading records ($uploadIndex/$totalToUpload)...")
+                Log.i(TAG, "Uploading ($uploadIndex/$totalToUpload) $fileName to Google Drive")
+
                 val currentHash = computeSha256(content)
-                val lastSyncedHash = getLastSyncedHash(context, fileName)
-                lastSyncedHash != null && lastSyncedHash == currentHash
-            }
+                val result = syncCsv(
+                    context = context,
+                    fileName = fileName,
+                    fileContent = content,
+                    scannerNumber = scannerNumber,
+                    folderId = folderId
+                )
 
-            if (allUnmodified) {
-                Log.i(TAG, "Pair $pairKey is unmodified since last sync. Bypassing upload.")
-                bypassedCount += fileData.size
-                fileData.forEach { (doc, _, _) ->
+                if (result.success) {
+                    saveLastSyncedHash(context, fileName, currentHash)
                     csvManager.archiveFile(doc)
+                    successCount++
+                } else {
+                    failedCount++
                 }
-                continue
             }
 
-            // If any file in the pair was modified, queue both files for upload
-            filesToUpload.addAll(fileData)
-        }
+            if (successCount > 0 && failedCount == 0) {
+                setPendingSyncFile(context, null)
+            }
 
-        val totalToUpload = filesToUpload.size
-        var uploadIndex = 0
+            val summaryMessage = when {
+                successCount > 0 && failedCount == 0 -> {
+                    val bypassedMsg = if (bypassedCount > 0) " ($bypassedCount up to date)" else ""
+                    "✓ Synced & archived $successCount file(s) in Google Drive$bypassedMsg"
+                }
+                successCount == 0 && failedCount == 0 && bypassedCount > 0 -> {
+                    "✓ All $bypassedCount file(s) up to date — sync bypassed"
+                }
+                successCount > 0 && failedCount > 0 -> {
+                    "Synced $successCount file(s), $failedCount failed"
+                }
+                else -> {
+                    "✗ Sync failed for $failedCount file(s)"
+                }
+            }
 
-        for ((doc, fileName, content) in filesToUpload) {
-            uploadIndex++
-            onProgress?.invoke("Uploading records ($uploadIndex/$totalToUpload)...")
-            Log.i(TAG, "Uploading ($uploadIndex/$totalToUpload) $fileName to Google Drive")
-
-            val currentHash = computeSha256(content)
-            val result = syncCsv(
-                context = context,
-                fileName = fileName,
-                fileContent = content,
-                scannerNumber = scannerNumber,
-                folderId = folderId
+            BatchSyncResult(
+                totalFiles = pendingFiles.size,
+                successCount = successCount,
+                failedCount = failedCount,
+                bypassedCount = bypassedCount,
+                message = summaryMessage
             )
+        }
+    }
 
-            if (result.success) {
-                saveLastSyncedHash(context, fileName, currentHash)
-                csvManager.archiveFile(doc)
-                successCount++
-            } else {
-                failedCount++
+    /**
+     * Silently uploads any modified CSV files in the background using an application-level scope
+     * that survives Activity pause/stop/destruction.
+     *
+     * - Files from previous days (not matching today's filenames) are uploaded AND moved to 'Archive/'.
+     * - Today's active session files are uploaded in-place (saving their SHA-256 hash) without moving
+     *   to 'Archive/' while [archiveToday] is false, or also archived when [archiveToday] is true.
+     */
+    fun triggerSilentBackgroundSync(
+        context: Context,
+        archiveToday: Boolean = false
+    ) {
+        val appContext = context.applicationContext
+        if (!isAutoSyncEnabled(appContext)) return
+        val webhookUrl = getWebhookUrl(appContext)
+        if (webhookUrl.isBlank()) return
+
+        backgroundScope.launch {
+            syncMutex.withLock {
+                try {
+                    val csvManager = CsvManager(appContext)
+                    csvManager.ensurePairedOutputFiles()
+                    val pendingFiles = csvManager.getAllPendingOutputCsvFiles()
+                    if (pendingFiles.isEmpty()) return@withLock
+
+                    if (!isOnline(appContext)) {
+                        setPendingSyncFile(appContext, "batch_${pendingFiles.size}")
+                        return@withLock
+                    }
+
+                    val todayMain = csvManager.todayFileName
+                    val todayNew = csvManager.todayNewFileName
+                    val scannerNumber = csvManager.scannerName
+                    var allSucceeded = true
+
+                    val sortedFiles = pendingFiles.sortedBy {
+                        if (it.name?.endsWith("_NEW.csv", ignoreCase = true) == true) 1 else 0
+                    }
+
+                    for (doc in sortedFiles) {
+                        val fileName = doc.name ?: continue
+                        val isTodayFile = fileName.equals(todayMain, ignoreCase = true) ||
+                                          fileName.equals(todayNew, ignoreCase = true)
+                        val shouldArchive = archiveToday || !isTodayFile
+
+                        val content = try {
+                            appContext.contentResolver.openInputStream(doc.uri)?.use { stream ->
+                                stream.bufferedReader(Charsets.UTF_8).readText()
+                            } ?: ""
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Silent sync failed reading $fileName", e)
+                            allSucceeded = false
+                            continue
+                        }
+
+                        if (content.isBlank() || isCsvEmptyOrHeaderOnly(content)) {
+                            if (shouldArchive) {
+                                csvManager.archiveFile(doc)
+                            }
+                            continue
+                        }
+
+                        val currentHash = computeSha256(content)
+                        val lastSyncedHash = getLastSyncedHash(appContext, fileName)
+
+                        if (lastSyncedHash != null && lastSyncedHash == currentHash) {
+                            if (shouldArchive) {
+                                csvManager.archiveFile(doc)
+                            }
+                            continue
+                        }
+
+                        Log.i(TAG, "Silent background upload for $fileName (archive=$shouldArchive)")
+                        val result = syncCsv(
+                            context = appContext,
+                            fileName = fileName,
+                            fileContent = content,
+                            scannerNumber = scannerNumber
+                        )
+                        if (result.success) {
+                            saveLastSyncedHash(appContext, fileName, currentHash)
+                            if (shouldArchive) {
+                                csvManager.archiveFile(doc)
+                            }
+                        } else {
+                            allSucceeded = false
+                        }
+                    }
+
+                    if (allSucceeded) {
+                        setPendingSyncFile(appContext, null)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Silent background sync error", e)
+                }
             }
         }
-
-        if (successCount > 0 && failedCount == 0) {
-            setPendingSyncFile(context, null)
-        }
-
-        val summaryMessage = when {
-            successCount > 0 && failedCount == 0 -> {
-                val bypassedMsg = if (bypassedCount > 0) " ($bypassedCount up to date)" else ""
-                "✓ Synced & archived $successCount file(s) in Google Drive$bypassedMsg"
-            }
-            successCount == 0 && failedCount == 0 && bypassedCount > 0 -> {
-                "✓ All $bypassedCount file(s) up to date — sync bypassed"
-            }
-            successCount > 0 && failedCount > 0 -> {
-                "Synced $successCount file(s), $failedCount failed"
-            }
-            else -> {
-                "✗ Sync failed for $failedCount file(s)"
-            }
-        }
-
-        BatchSyncResult(
-            totalFiles = pendingFiles.size,
-            successCount = successCount,
-            failedCount = failedCount,
-            bypassedCount = bypassedCount,
-            message = summaryMessage
-        )
     }
 
     sealed class SourceAssetUpdateResult {
@@ -401,7 +508,9 @@ object DriveSyncManager {
 
     /**
      * Checks if Google Drive has an updated source asset CSV in [folderId].
-     * If updated or [force] is true, downloads the new file, saves it locally, and reloads it.
+     * Always queries metadata ("checkSourceAsset") first to compare the remote file's
+     * lastUpdated timestamp against the local file before downloading.
+     * Only downloads ("getSourceAsset") if Google Drive has a newer version (or if [force] is true).
      */
     suspend fun checkAndUpdateSourceAssetList(
         context: Context,
@@ -413,7 +522,11 @@ object DriveSyncManager {
         if (!isOnline(context)) return@withContext SourceAssetUpdateResult.Offline
 
         val folderId = getSourceFolderId(context)
-        val localLastModified = getSourceLastModified(context)
+        val savedCloudLastModified = getSourceLastModified(context)
+        val fileLastModified = csvManager.getLocalSourceLastModified()
+        val localLastModified = if (savedCloudLastModified > 0L) savedCloudLastModified else fileLastModified
+        val hasLocalSourceFile = csvManager.loadSavedSourceUri() != null && fileLastModified > 0L
+        val localFileName = csvManager.loadSavedSourceName() ?: ""
 
         try {
             if (!force) {
@@ -432,11 +545,17 @@ object DriveSyncManager {
                 }
 
                 val driveLastUpdated = checkJson.optLong("lastUpdated", 0L)
-                val fileName = checkJson.optString("fileName", "Source Asset List.csv")
+                val driveFileName = checkJson.optString("fileName", "Source Asset List.csv")
+                val sameNameOrUnset = localFileName.isBlank() || driveFileName.equals(localFileName, ignoreCase = true)
 
-                if (localLastModified > 0 && driveLastUpdated <= localLastModified) {
+                if (hasLocalSourceFile && localLastModified > 0L && driveLastUpdated > 0L &&
+                    driveLastUpdated <= localLastModified && sameNameOrUnset
+                ) {
                     val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
                     saveSourceLastCheckTime(context, timeStr)
+                    if (savedCloudLastModified == 0L) {
+                        setSourceLastModified(context, driveLastUpdated)
+                    }
                     return@withContext SourceAssetUpdateResult.UpToDate
                 }
             }
@@ -601,10 +720,16 @@ object DriveSyncManager {
 
         networkCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                if (!isAutoSyncEnabled(context)) return
                 val pendingFile = getPendingSyncFile(context)
-                if (!pendingFile.isNullOrBlank() && isAutoSyncEnabled(context)) {
-                    Log.i(TAG, "Network restored. Triggering auto-sync for $pendingFile")
-                    onAutoSyncTriggered(pendingFile)
+                val hasPendingFiles = try {
+                    CsvManager(context.applicationContext).getAllPendingOutputCsvFiles().isNotEmpty()
+                } catch (_: Exception) {
+                    false
+                }
+                if (!pendingFile.isNullOrBlank() || hasPendingFiles) {
+                    Log.i(TAG, "Network restored. Triggering silent background sync")
+                    triggerSilentBackgroundSync(context.applicationContext, archiveToday = false)
                 }
             }
         }

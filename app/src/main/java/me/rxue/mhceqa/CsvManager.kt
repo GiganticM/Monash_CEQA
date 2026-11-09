@@ -31,7 +31,7 @@ class CsvManager(private val context: Context) {
     companion object {
         // Found assets: pure asset numbers and departments for easy column copy
         val OUTPUT_HEADERS = arrayOf("asset_number", "department", "timestamp", "row_type")
-        val OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "timestamp", "row_type", "condition_score")
+        val OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "timestamp", "row_type", "condition_score", "note")
 
         // New assets: complete equipment registration columns
         val NEW_OUTPUT_HEADERS = arrayOf("asset_number", "department", "make", "model", "serial_number", "timestamp", "user_initials", "note")
@@ -383,6 +383,26 @@ class CsvManager(private val context: Context) {
     fun loadSavedSourceName(): String? =
         prefs.getString(KEY_SOURCE_NAME, null)
 
+    /**
+     * Returns the lastModified timestamp (epoch ms) of the currently configured local source CSV file,
+     * or 0L if no source CSV is saved or accessible.
+     */
+    fun getLocalSourceLastModified(): Long {
+        val uri = loadSavedSourceUri() ?: return 0L
+        return try {
+            if (uri.scheme == "file") {
+                val path = uri.path ?: return 0L
+                val file = File(path)
+                if (file.exists() && file.length() > 0L) file.lastModified() else 0L
+            } else {
+                val doc = DocumentFile.fromSingleUri(context, uri)
+                if (doc != null && doc.exists() && doc.length() > 0L) doc.lastModified() else 0L
+            }
+        } catch (_: Exception) {
+            0L
+        }
+    }
+
     fun clearSourceUri() {
         SourceAssetRepository.invalidate()
         prefs.edit {
@@ -493,8 +513,8 @@ class CsvManager(private val context: Context) {
 
         context.contentResolver.openOutputStream(doc.uri, "wa")?.use { os ->
             CSVWriter(OutputStreamWriter(os)).use { writer ->
-                val emptyRow = if (isIo) arrayOf("", "", "", "", "") else arrayOf("", "", "", "")
-                val sessionRow = if (isIo) arrayOf(initials, location, timestamp, "session", "") else arrayOf(initials, location, timestamp, "session")
+                val emptyRow = if (isIo) arrayOf("", "", "", "", "", "") else arrayOf("", "", "", "")
+                val sessionRow = if (isIo) arrayOf(initials, location, timestamp, "session", "", "") else arrayOf(initials, location, timestamp, "session")
                 if (hasContent) writer.writeNext(emptyRow)
                 writer.writeNext(sessionRow)
             }
@@ -559,7 +579,8 @@ class CsvManager(private val context: Context) {
                             saved.department,
                             saved.timestamp,
                             "found",
-                            saved.conditionScore.ifEmpty { "+1" }
+                            saved.conditionScore.ifEmpty { "+1" },
+                            saved.note
                         )
                     } else {
                         arrayOf(
@@ -613,6 +634,7 @@ class CsvManager(private val context: Context) {
                             val time = if (isFoundRow || row.size <= 4) row.getOrElse(2) { "" } else row.getOrElse(5) { "" }
                             val rawScore = if (isFoundRow) row.getOrElse(4) { "" } else ""
                             val score = if (isIo && isFoundRow) rawScore.ifEmpty { "+1" } else rawScore
+                            val note = if (isFoundRow) row.getOrElse(5) { "" } else ""
 
                             assets.add(Asset(
                                 assetNumber    = assetNum,
@@ -623,7 +645,8 @@ class CsvManager(private val context: Context) {
                                 timestamp      = time,
                                 isNew          = isOldFormatNew,
                                 userInitials   = currentSessionUser,
-                                conditionScore = score
+                                conditionScore = score,
+                                note           = note
                             ))
                         }
                     }
@@ -696,10 +719,10 @@ class CsvManager(private val context: Context) {
     }
 
     /**
-     * Updates the condition score for an existing asset in the output CSV file (Found or New).
-     * Rewrites the row with the new condition score column value.
+     * Updates the condition score and note for an existing asset in the output CSV file (Found or New).
+     * Rewrites the row with the new condition score and note column values.
      */
-    fun updateAssetConditionScore(assetNumber: String, score: String): Boolean {
+    fun updateAssetConditionScore(assetNumber: String, score: String, note: String = ""): Boolean {
         val target = assetNumber.trim()
         if (target.isEmpty()) return false
 
@@ -716,16 +739,22 @@ class CsvManager(private val context: Context) {
                         val row = line ?: continue
                         if (isHeader) {
                             isHeader = false
-                            rows.add(row)
+                            val headerRow = if (row.size == 5 && !row.any { it.equals("note", ignoreCase = true) }) {
+                                row + "note"
+                            } else {
+                                row
+                            }
+                            rows.add(headerRow)
                             continue
                         }
                         if (!found && row.isNotEmpty() && !row.any { it.equals("session", ignoreCase = true) } && row[0].equals(target, ignoreCase = true)) {
                             found = true
-                            // Format: [assetNumber, department, timestamp, "found", conditionScore]
+                            // Format: [assetNumber, department, timestamp, "found", conditionScore, note]
                             val newRow = when {
-                                row.size >= 5 -> row.copyOf().also { it[4] = score }
-                                row.size == 4 -> arrayOf(row[0], row[1], row[2], row[3], score)
-                                else -> row + score
+                                row.size >= 6 -> row.copyOf().also { it[4] = score; it[5] = note }
+                                row.size == 5 -> arrayOf(row[0], row[1], row[2], row[3], score, note)
+                                row.size == 4 -> arrayOf(row[0], row[1], row[2], row[3], score, note)
+                                else -> row + score + note
                             }
                             rows.add(newRow)
                         } else {
@@ -752,27 +781,27 @@ class CsvManager(private val context: Context) {
             var found = false
             var isHeader = true
             var scoreIdx = 7
+            var noteIdx = 8
             context.contentResolver.openInputStream(newDoc.uri)?.use { stream ->
                 CSVReader(InputStreamReader(stream)).use { reader ->
                     var line: Array<String>?
                     while (reader.readNext().also { line = it } != null) {
                         val row = line ?: continue
                         if (isHeader) {
-                            val idx = row.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
-                            if (idx != -1) scoreIdx = idx
+                            val sIdx = row.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
+                            if (sIdx != -1) scoreIdx = sIdx
+                            val nIdx = row.indexOfFirst { it.equals("note", ignoreCase = true) }
+                            if (nIdx != -1) noteIdx = nIdx
                             isHeader = false
                             rows.add(row)
                             continue
                         }
                         if (!found && row.isNotEmpty() && row[0].equals(target, ignoreCase = true)) {
                             found = true
-                            val newRow = if (row.size > scoreIdx) {
-                                row.copyOf().also { it[scoreIdx] = score }
-                            } else {
-                                val padded = Array(scoreIdx + 1) { i -> row.getOrElse(i) { "" } }
-                                padded[scoreIdx] = score
-                                padded
-                            }
+                            val requiredSize = maxOf(row.size, scoreIdx + 1, noteIdx + 1)
+                            val newRow = Array(requiredSize) { i -> row.getOrElse(i) { "" } }
+                            newRow[scoreIdx] = score
+                            newRow[noteIdx] = note
                             rows.add(newRow)
                         } else {
                             rows.add(row)
