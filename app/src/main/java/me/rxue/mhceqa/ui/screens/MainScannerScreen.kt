@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,12 +22,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -64,16 +67,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.rxue.mhceqa.CsvManager
@@ -113,6 +121,33 @@ fun matchesUser(assetInitials: String, currentInitials: String): Boolean {
     return currentTokens.any { it in assetTokens }
 }
 
+private enum class LogFilterMode { ALL, MY_SCANS, NEW_ONLY }
+
+@Composable
+private fun LogFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = if (selected) Color(0xFF1E2830) else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) TerminalGreenBright else Color(0xFF37474F)),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (selected) TerminalGreenBright else TerminalGreenSecondary,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScannerScreen(
@@ -135,6 +170,7 @@ fun MainScannerScreen(
     userInitials: String = "",
     userLocation: String = "",
     onSearchSubmitted: (String) -> Unit,
+    onEditAsset: (Asset) -> Unit = {},
     onConnectBt: () -> Unit,
     onDisconnectBt: () -> Unit,
     onPickCsv: () -> Unit,
@@ -152,7 +188,7 @@ fun MainScannerScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = if (isIoSession) "MH CEQA (IO)" else "MH CEQA",
+                            text = "MH CEQA",
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White
                         )
@@ -164,8 +200,8 @@ fun MainScannerScreen(
                         ) {
                             Text(
                                 text = "END SESSION",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.5.sp
                             )
                         }
 
@@ -523,7 +559,10 @@ fun MainScannerScreen(
                 // ══════════════════════════════════════════════════════════════
                 // TAB 2 - LOG (Terminal Dark Background)
                 // ══════════════════════════════════════════════════════════════
-                var showAllScans by remember { mutableStateOf(true) }
+                var filterMode by remember { mutableStateOf(LogFilterMode.ALL) }
+                var logSearchQuery by remember { mutableStateOf("") }
+                val logFocusManager = LocalFocusManager.current
+                val logKeyboardController = LocalSoftwareKeyboardController.current
 
                 Column(
                     modifier = Modifier
@@ -536,14 +575,29 @@ fun MainScannerScreen(
                     val myScansCount by remember(userInitials) {
                         derivedStateOf { scanLog.count { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) } }
                     }
+                    val newScansCount by remember {
+                        derivedStateOf { scanLog.count { !it.isSessionHeader && it.isNew } }
+                    }
 
-                    // Strict reverse-chronological ordering: newest scans appear at the top regardless of NEW or FOUND status.
-                    val displayAssets by remember(showAllScans, userInitials) {
+                    // Strict reverse-chronological ordering + filter chips + search query
+                    val displayAssets by remember(filterMode, userInitials, logSearchQuery) {
                         derivedStateOf {
-                            val filtered = if (showAllScans) {
-                                scanLog.filter { !it.isSessionHeader }
-                            } else {
-                                scanLog.filter { !it.isSessionHeader && matchesUser(it.userInitials, userInitials) }
+                            val trimmedQuery = logSearchQuery.trim()
+                            val filtered = scanLog.filter { asset ->
+                                if (asset.isSessionHeader) return@filter false
+                                val passesChip = when (filterMode) {
+                                    LogFilterMode.ALL -> true
+                                    LogFilterMode.MY_SCANS -> matchesUser(asset.userInitials, userInitials)
+                                    LogFilterMode.NEW_ONLY -> asset.isNew
+                                }
+                                if (!passesChip) return@filter false
+                                if (trimmedQuery.isEmpty()) return@filter true
+                                asset.assetNumber.contains(trimmedQuery, ignoreCase = true) ||
+                                    asset.department.contains(trimmedQuery, ignoreCase = true) ||
+                                    asset.make.contains(trimmedQuery, ignoreCase = true) ||
+                                    asset.model.contains(trimmedQuery, ignoreCase = true) ||
+                                    asset.serial.contains(trimmedQuery, ignoreCase = true) ||
+                                    asset.note.contains(trimmedQuery, ignoreCase = true)
                             }
                             filtered.withIndex().sortedWith { a, b ->
                                 val timeComp = CsvManager.normalizeTimestamp(b.value.timestamp)
@@ -563,42 +617,28 @@ fun MainScannerScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 6.dp)
+                                .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // Chip: ALL
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = if (showAllScans) Color(0xFF1E2830) else Color.Transparent,
-                                border = if (showAllScans) BorderStroke(1.dp, TerminalGreenBright) else BorderStroke(1.dp, Color(0xFF37474F)),
-                                modifier = Modifier.clickable { showAllScans = true }
-                            ) {
-                                Text(
-                                    text = "ALL ($allScansCount)",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (showAllScans) TerminalGreenBright else TerminalGreenSecondary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-
-                            // Chip: MY SCANS
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = if (!showAllScans) Color(0xFF1E2830) else Color.Transparent,
-                                border = if (!showAllScans) BorderStroke(1.dp, TerminalGreenBright) else BorderStroke(1.dp, Color(0xFF37474F)),
-                                modifier = Modifier.clickable { showAllScans = false }
-                            ) {
-                                Text(
-                                    text = "MY SCANS ($myScansCount)",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (!showAllScans) TerminalGreenBright else TerminalGreenSecondary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
+                            LogFilterChip(
+                                label = "ALL ($allScansCount)",
+                                selected = filterMode == LogFilterMode.ALL,
+                                onClick = { filterMode = LogFilterMode.ALL }
+                            )
+                            LogFilterChip(
+                                label = "MY ($myScansCount)",
+                                selected = filterMode == LogFilterMode.MY_SCANS,
+                                onClick = { filterMode = LogFilterMode.MY_SCANS }
+                            )
+                            LogFilterChip(
+                                label = "NEW ($newScansCount)",
+                                selected = filterMode == LogFilterMode.NEW_ONLY,
+                                onClick = { filterMode = LogFilterMode.NEW_ONLY }
+                            )
                         }
 
                         Surface(
@@ -608,11 +648,95 @@ fun MainScannerScreen(
                             Text(
                                 text = if (isIoSession) "IO SESSION" else "QA SESSION",
                                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = JetBrainsMonoFontFamily),
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
+                                maxLines = 1,
+                                softWrap = false,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
+                        }
+                    }
+
+                    // Compact Search / Filter Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(TerminalHeaderBackground)
+                            .padding(start = 10.dp, end = 10.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF141C22),
+                            border = BorderStroke(
+                                1.dp,
+                                if (logSearchQuery.isNotEmpty()) TerminalGreenBright else Color(0xFF37474F)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(34.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search Log",
+                                    tint = TerminalGreenSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (logSearchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search asset #, dept, S/N or note...",
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF607D8B),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    BasicTextField(
+                                        value = logSearchQuery,
+                                        onValueChange = {
+                                            logSearchQuery = it.replace("\n", "").replace("\r", "")
+                                        },
+                                        singleLine = true,
+                                        textStyle = TextStyle(
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 12.sp,
+                                            color = TerminalGreenBright
+                                        ),
+                                        cursorBrush = SolidColor(TerminalGreenBright),
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                        keyboardActions = KeyboardActions(
+                                            onSearch = {
+                                                logKeyboardController?.hide()
+                                                logFocusManager.clearFocus()
+                                            }
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                                if (logSearchQuery.isNotEmpty()) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear Search",
+                                        tint = TerminalGreenSecondary,
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .clickable { logSearchQuery = "" }
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -661,10 +785,15 @@ fun MainScannerScreen(
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            val emptyText = if (!showAllScans && allScansCount > 0) {
-                                "No scans under '$userInitials' today.\n\n$allScansCount scan(s) recorded by others.\nTap 'ALL' above to view."
-                            } else {
-                                "No scans recorded today.\n\nSwitch to the SCAN tab to begin."
+                            val emptyText = when {
+                                logSearchQuery.isNotBlank() ->
+                                    "No scans matching '${logSearchQuery.trim()}'."
+                                filterMode == LogFilterMode.MY_SCANS && allScansCount > 0 ->
+                                    "No scans under '$userInitials' today.\n\n$allScansCount scan(s) recorded by others.\nTap 'ALL' above to view."
+                                filterMode == LogFilterMode.NEW_ONLY && allScansCount > 0 ->
+                                    "No new assets registered today."
+                                else ->
+                                    "No scans recorded today.\n\nSwitch to the SCAN tab to begin."
                             }
                             Text(
                                 text = emptyText,
@@ -684,7 +813,12 @@ fun MainScannerScreen(
                                 ScanLogCard(
                                     asset = asset,
                                     fontSizeSp = fontSizeSp,
-                                    isEven = index % 2 == 0
+                                    isEven = index % 2 == 0,
+                                    onEditClick = {
+                                        if (!asset.isSessionHeader) {
+                                            onEditAsset(asset)
+                                        }
+                                    }
                                 )
                             }
                         }

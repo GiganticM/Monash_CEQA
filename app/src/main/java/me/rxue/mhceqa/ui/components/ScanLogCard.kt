@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,6 +48,7 @@ fun ScanLogCard(
     asset: Asset,
     fontSizeSp: Float = 13f,
     isEven: Boolean = false,
+    onEditClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var isExpanded by rememberSaveable(asset.assetNumber, asset.timestamp) { mutableStateOf(false) }
@@ -61,9 +65,11 @@ fun ScanLogCard(
             .fillMaxWidth()
             .background(rowBackgroundColor)
             .then(
-                if (asset.isNew) {
-                    Modifier.clickable { isExpanded = !isExpanded }
-                } else Modifier
+                when {
+                    asset.isNew -> Modifier.clickable { isExpanded = !isExpanded }
+                    !asset.isSessionHeader && onEditClick != null -> Modifier.clickable { onEditClick() }
+                    else -> Modifier
+                }
             )
     ) {
         Column(
@@ -161,6 +167,23 @@ fun ScanLogCard(
                             modifier = Modifier.padding(start = 3.dp)
                         )
                     }
+
+                    // Edit indicator/button for editable records (both FOUND and NEW)
+                    if (!asset.isSessionHeader && onEditClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 6.dp)
+                                .clickable { onEditClick() }
+                                .padding(2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Record",
+                                tint = TerminalGreenSubtle,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -177,8 +200,10 @@ fun ScanLogCard(
                 )
             }
 
-            // Found asset IO score / note row (shown when a note or non-default score is recorded on a FOUND asset)
-            if (!asset.isNew && !asset.isSessionHeader && (asset.note.isNotBlank() || (asset.conditionScore.isNotBlank() && asset.conditionScore != "+1"))) {
+            // Collapsed score / note preview for FOUND assets and collapsed NEW assets
+            val showCollapsedExtra = !asset.isSessionHeader && (!asset.isNew || !isExpanded) &&
+                (asset.note.isNotBlank() || (asset.conditionScore.isNotBlank() && asset.conditionScore != "+1"))
+            if (showCollapsedExtra) {
                 val extraInfo = buildString {
                     if (asset.conditionScore.isNotBlank() && asset.conditionScore != "+1") {
                         append("Score: ${asset.conditionScore}")
@@ -323,6 +348,32 @@ fun ScanLogCard(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontSize = detailFontSize,
                                 color = TerminalGreenSecondary
+                            )
+                        }
+                    }
+
+                    // Action row inside expanded NEW asset
+                    if (onEditClick != null) {
+                        Row(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clickable { onEditClick() }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = TerminalGreenPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Edit Record",
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontSize = (fontSizeSp - 2.5f).coerceAtLeast(10f).sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TerminalGreenPrimary
                             )
                         }
                     }

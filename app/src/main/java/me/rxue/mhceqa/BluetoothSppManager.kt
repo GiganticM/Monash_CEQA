@@ -36,6 +36,7 @@ class BluetoothSppManager(private val context: Context) {
         private const val KEY_LAST_MAC   = "last_device_mac"
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private const val LINE_TERMINATOR = "\r"
+        private const val POST_CONNECT_SETTLE_MS = 400L
     }
 
     // ─── State ────────────────────────────────────────────────────────────────
@@ -182,6 +183,14 @@ class BluetoothSppManager(private val context: Context) {
             prefs.edit().putString(KEY_LAST_MAC, device.address).apply()
             startReaderThread()
 
+            // Allow remote Bluetooth-to-UART bridge (e.g. ES ANNA-LYZER) to finish waking
+            // and discard any 0xFF ('ÿ') line-wakeup glitch byte before transmitting data.
+            kotlinx.coroutines.delay(POST_CONNECT_SETTLE_MS)
+            if (!connectIntentional) {
+                disconnect()
+                return@withContext ConnectionResult.Cancelled
+            }
+
             Log.i(TAG, "Connected to ${device.name}")
             ConnectionResult.Success(device.name ?: device.address)
 
@@ -222,6 +231,12 @@ class BluetoothSppManager(private val context: Context) {
             prefs.edit().putString(KEY_LAST_MAC, device.address).apply()
             startReaderThread()
 
+            try { Thread.sleep(POST_CONNECT_SETTLE_MS) } catch (_: InterruptedException) {}
+            if (!connectIntentional) {
+                disconnect()
+                return ConnectionResult.Cancelled
+            }
+
             Log.i(TAG, "Connected via fallback to ${device.name}")
             ConnectionResult.Success(device.name ?: device.address)
 
@@ -235,16 +250,19 @@ class BluetoothSppManager(private val context: Context) {
 
     // ─── Transmission ─────────────────────────────────────────────────────────
 
+    @Synchronized
     fun sendString(text: String): Boolean {
         val stream = outputStream ?: run {
             Log.w(TAG, "sendString called but not connected")
             return false
         }
+        val cleanText = text.trim().filter { it.code in 0x20..0x7E }
+        if (cleanText.isEmpty()) return false
         return try {
-            val payload = (text + LINE_TERMINATOR).toByteArray(Charsets.US_ASCII)
+            val payload = (cleanText + LINE_TERMINATOR).toByteArray(Charsets.US_ASCII)
             stream.write(payload)
             stream.flush()
-            Log.d(TAG, "Sent ${payload.size} bytes: $text")
+            Log.d(TAG, "Sent ${payload.size} bytes: $cleanText")
             true
         } catch (e: IOException) {
             Log.e(TAG, "Send failed: ${e.message}")
@@ -252,6 +270,7 @@ class BluetoothSppManager(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun sendBytes(bytes: ByteArray): Boolean {
         val stream = outputStream ?: return false
         return try {

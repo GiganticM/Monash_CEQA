@@ -39,6 +39,7 @@ import me.rxue.mhceqa.models.Asset
 import me.rxue.mhceqa.ui.components.BtState
 import me.rxue.mhceqa.ui.components.ConditionScoreDialog
 import me.rxue.mhceqa.ui.components.CustomSnackbarVisuals
+import me.rxue.mhceqa.ui.components.EditAssetDialog
 import me.rxue.mhceqa.ui.screens.MainScannerScreen
 import me.rxue.mhceqa.ui.screens.matchesUser
 import me.rxue.mhceqa.ui.theme.MonashCeqaTheme
@@ -68,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedTab by mutableIntStateOf(0)
     private val isScanTabActive get() = (selectedTab == 0)
     private var conditionScorePrompt by mutableStateOf<Pair<String, Asset>?>(null)
+    private var editingAsset by mutableStateOf<Asset?>(null)
     private var showEndSessionPrompt by mutableStateOf(false)
     private var showAboutPrompt by mutableStateOf(false)
 
@@ -251,6 +253,9 @@ class MainActivity : AppCompatActivity() {
                     onSearchSubmitted = { query ->
                         performSearch(query)
                     },
+                    onEditAsset = { asset ->
+                        editingAsset = asset
+                    },
                     onConnectBt = { checkPermissionsAndShowPicker() },
                     onDisconnectBt = { disconnectBluetooth() },
                     onPickCsv = {
@@ -275,6 +280,22 @@ class MainActivity : AppCompatActivity() {
                         onSave = { score, note ->
                             conditionScorePrompt = null
                             saveConditionScore(assetNumber, score, note)
+                        }
+                    )
+                }
+
+                editingAsset?.let { target ->
+                    EditAssetDialog(
+                        asset = target,
+                        isIoSession = isIoSession,
+                        onDismiss = { editingAsset = null },
+                        onSave = { updated ->
+                            editingAsset = null
+                            updateLoggedAsset(target, updated)
+                        },
+                        onDelete = { toDelete ->
+                            editingAsset = null
+                            deleteLoggedAsset(toDelete)
                         }
                     )
                 }
@@ -327,7 +348,7 @@ class MainActivity : AppCompatActivity() {
                             packageManager.getPackageInfo(packageName, 0).versionName
                         }
                     } catch (_: Exception) {
-                        "2.1"
+                        "2.2"
                     }
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showAboutPrompt = false },
@@ -735,6 +756,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateLoggedAsset(originalAsset: Asset, updatedAsset: Asset) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val updated = csvManager.updateAssetRecord(originalAsset, updatedAsset)
+            withContext(Dispatchers.Main) {
+                if (updated) {
+                    val idx = scanLog.indexOfFirst {
+                        it === originalAsset || (!it.isSessionHeader && it.isNew == originalAsset.isNew &&
+                            it.assetNumber.equals(originalAsset.assetNumber, ignoreCase = true) &&
+                            it.timestamp == originalAsset.timestamp)
+                    }
+                    if (idx != -1) {
+                        scanLog[idx] = updatedAsset
+                    }
+                    updateLastScannedDisplay()
+                    showSnackbar("✓ Updated '${updatedAsset.assetNumber}'", Color(0xFF2E7D32))
+                    scheduleIdleSilentSync()
+                } else {
+                    showSnackbar("⚠ Could not update '${originalAsset.assetNumber}'", Color(0xFFE65100))
+                }
+            }
+        }
+    }
+
+    private fun deleteLoggedAsset(targetAsset: Asset) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val deleted = csvManager.deleteAssetRecord(targetAsset)
+            withContext(Dispatchers.Main) {
+                if (deleted) {
+                    val idx = scanLog.indexOfFirst {
+                        it === targetAsset || (!it.isSessionHeader && it.isNew == targetAsset.isNew &&
+                            it.assetNumber.equals(targetAsset.assetNumber, ignoreCase = true) &&
+                            it.timestamp == targetAsset.timestamp)
+                    }
+                    if (idx != -1) {
+                        scanLog.removeAt(idx)
+                    }
+                    updateLastScannedDisplay()
+                    showSnackbar("✓ Deleted '${targetAsset.assetNumber}'", Color(0xFF2E7D32))
+                    scheduleIdleSilentSync()
+                } else {
+                    showSnackbar("⚠ Could not delete '${targetAsset.assetNumber}'", Color(0xFFE65100))
+                }
+            }
+        }
+    }
+
     // ─── Bluetooth ────────────────────────────────────────────────────────────
 
     private fun sendViaBluetooth(text: String) {
@@ -991,6 +1058,9 @@ class MainActivity : AppCompatActivity() {
         if (lastAsset != null) {
             lastScannedAssetNumber = lastAsset.assetNumber
             lastScannedRoutinePeriod = lastAsset.routinePeriod
+        } else {
+            lastScannedAssetNumber = ""
+            lastScannedRoutinePeriod = 0
         }
     }
 

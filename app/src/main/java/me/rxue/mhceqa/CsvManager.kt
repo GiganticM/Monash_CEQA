@@ -29,8 +29,8 @@ class CsvManager(private val context: Context) {
     // ─── Constants ────────────────────────────────────────────────────────────
 
     companion object {
-        // Found assets: pure asset numbers and departments for easy column copy
-        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "timestamp", "row_type")
+        // Found assets: pure asset numbers and departments for easy column copy, plus optional note
+        val OUTPUT_HEADERS = arrayOf("asset_number", "department", "timestamp", "row_type", "note")
         val OUTPUT_HEADERS_IO = arrayOf("asset_number", "department", "timestamp", "row_type", "condition_score", "note")
 
         // New assets: complete equipment registration columns
@@ -513,8 +513,8 @@ class CsvManager(private val context: Context) {
 
         context.contentResolver.openOutputStream(doc.uri, "wa")?.use { os ->
             CSVWriter(OutputStreamWriter(os)).use { writer ->
-                val emptyRow = if (isIo) arrayOf("", "", "", "", "", "") else arrayOf("", "", "", "")
-                val sessionRow = if (isIo) arrayOf(initials, location, timestamp, "session", "", "") else arrayOf(initials, location, timestamp, "session")
+                val emptyRow = if (isIo) arrayOf("", "", "", "", "", "") else arrayOf("", "", "", "", "")
+                val sessionRow = if (isIo) arrayOf(initials, location, timestamp, "session", "", "") else arrayOf(initials, location, timestamp, "session", "")
                 if (hasContent) writer.writeNext(emptyRow)
                 writer.writeNext(sessionRow)
             }
@@ -587,7 +587,8 @@ class CsvManager(private val context: Context) {
                             saved.assetNumber,
                             saved.department,
                             saved.timestamp,
-                            "found"
+                            "found",
+                            saved.note
                         )
                     }
                     writer.writeNext(row)
@@ -609,16 +610,23 @@ class CsvManager(private val context: Context) {
                 CSVReader(InputStreamReader(inputStream)).use { reader ->
                     var line: Array<String>?
                     var isHeader = true
+                    var scoreIdx = -1
+                    var noteIdx = -1
                     while (reader.readNext().also { line = it } != null) {
-                        if (isHeader) { isHeader = false; continue }
                         val row = line ?: continue
+                        if (isHeader) {
+                            scoreIdx = row.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
+                            noteIdx = row.indexOfFirst { it.equals("note", ignoreCase = true) }
+                            isHeader = false
+                            continue
+                        }
                         if (row.all { it.isBlank() }) continue
 
                         val isSessionHeader = row.any { it.equals("session", ignoreCase = true) }
                         if (isSessionHeader) {
                             currentSessionUser = row.getOrElse(0) { "" }
                             val loc = row.getOrElse(1) { "" }
-                            val time = if (row.size <= 4) row.getOrElse(2) { "" } else row.getOrElse(5) { "" }
+                            val time = row.getOrElse(2) { "" }.ifBlank { row.getOrElse(5) { "" } }
                             assets.add(Asset(
                                 assetNumber     = currentSessionUser,
                                 department      = loc,
@@ -632,9 +640,18 @@ class CsvManager(private val context: Context) {
                             val assetNum = row.getOrElse(0) { "" }.uppercase()
                             val dept = row.getOrElse(1) { "" }
                             val time = if (isFoundRow || row.size <= 4) row.getOrElse(2) { "" } else row.getOrElse(5) { "" }
-                            val rawScore = if (isFoundRow) row.getOrElse(4) { "" } else ""
+                            val rawScore = when {
+                                scoreIdx != -1 && isFoundRow -> row.getOrElse(scoreIdx) { "" }
+                                isIo && isFoundRow -> row.getOrElse(4) { "" }
+                                else -> ""
+                            }
                             val score = if (isIo && isFoundRow) rawScore.ifEmpty { "+1" } else rawScore
-                            val note = if (isFoundRow) row.getOrElse(5) { "" } else ""
+                            val note = when {
+                                noteIdx != -1 && isFoundRow -> row.getOrElse(noteIdx) { "" }
+                                isIo && isFoundRow -> row.getOrElse(5) { "" }
+                                isFoundRow -> row.getOrElse(4) { "" }
+                                else -> ""
+                            }
 
                             assets.add(Asset(
                                 assetNumber    = assetNum,
@@ -821,6 +838,130 @@ class CsvManager(private val context: Context) {
         }
 
         return false
+    }
+
+    private fun findAssetRowIndex(
+        rawRows: List<Array<String>>,
+        targetNum: String,
+        targetTimestamp: String,
+        tsCol: Int
+    ): Int {
+        val targetTsNorm = if (targetTimestamp.isNotBlank()) normalizeTimestamp(targetTimestamp) else ""
+        if (targetTsNorm.isNotEmpty()) {
+            val exact = (1 until rawRows.size).firstOrNull { idx ->
+                val row = rawRows[idx]
+                !row.any { it.equals("session", ignoreCase = true) } &&
+                    row.getOrElse(0) { "" }.equals(targetNum, ignoreCase = true) &&
+                    normalizeTimestamp(row.getOrElse(tsCol) { "" }) == targetTsNorm
+            }
+            if (exact != null) return exact
+        }
+        return (1 until rawRows.size).firstOrNull { idx ->
+            val row = rawRows[idx]
+            !row.any { it.equals("session", ignoreCase = true) } &&
+                row.getOrElse(0) { "" }.equals(targetNum, ignoreCase = true)
+        } ?: -1
+    }
+
+    /**
+     * Updates an existing asset record (either FOUND or NEW) in its respective output CSV file.
+     * Supports editing notes/scores for FOUND assets and full metadata + notes/scores for NEW assets.
+     */
+    fun updateAssetRecord(originalAsset: Asset, updatedAsset: Asset): Boolean {
+        val targetNum = originalAsset.assetNumber.trim()
+        if (targetNum.isEmpty()) return false
+
+        val isNewFile = originalAsset.isNew
+        val doc = getOutputDocumentFile(create = false, isNewAssets = isNewFile) ?: return false
+
+        val rawRows = mutableListOf<Array<String>>()
+        context.contentResolver.openInputStream(doc.uri)?.use { stream ->
+            CSVReader(InputStreamReader(stream)).use { reader ->
+                var line: Array<String>?
+                while (reader.readNext().also { line = it } != null) {
+                    line?.let { rawRows.add(it) }
+                }
+            }
+        }
+        if (rawRows.isEmpty()) return false
+
+        val header = rawRows[0]
+        val scoreIdx = header.indexOfFirst { it.equals("condition_score", ignoreCase = true) }
+        var noteIdx = header.indexOfFirst { it.equals("note", ignoreCase = true) }
+        if (noteIdx == -1) {
+            noteIdx = header.size
+            rawRows[0] = header + "note"
+        }
+
+        val tsCol = if (isNewFile) 5 else 2
+        val matchIdx = findAssetRowIndex(rawRows, targetNum, originalAsset.timestamp, tsCol)
+        if (matchIdx == -1) return false
+
+        val oldRow = rawRows[matchIdx]
+        val minCols = if (isNewFile) 7 else 4
+        val requiredSize = maxOf(oldRow.size, minCols, noteIdx + 1, if (scoreIdx != -1) scoreIdx + 1 else 0)
+        val newRow = Array(requiredSize) { i -> oldRow.getOrElse(i) { "" } }
+
+        if (isNewFile) {
+            newRow[0] = updatedAsset.assetNumber.trim().uppercase()
+            newRow[1] = updatedAsset.department.trim().uppercase()
+            newRow[2] = updatedAsset.make.trim()
+            newRow[3] = updatedAsset.model.trim()
+            newRow[4] = updatedAsset.serial.trim().uppercase()
+            if (scoreIdx != -1) {
+                newRow[scoreIdx] = updatedAsset.conditionScore.ifEmpty { "+1" }
+            }
+            newRow[noteIdx] = updatedAsset.note.trim()
+        } else {
+            if (scoreIdx != -1) {
+                newRow[scoreIdx] = updatedAsset.conditionScore.ifEmpty { "+1" }
+            }
+            newRow[noteIdx] = updatedAsset.note.trim()
+        }
+
+        rawRows[matchIdx] = newRow
+
+        context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
+            CSVWriter(OutputStreamWriter(os)).use { writer ->
+                rawRows.forEach { writer.writeNext(it) }
+            }
+        }
+        return true
+    }
+
+    /**
+     * Deletes a single logged asset record from its respective output CSV file (Found or New).
+     */
+    fun deleteAssetRecord(targetAsset: Asset): Boolean {
+        val targetNum = targetAsset.assetNumber.trim()
+        if (targetNum.isEmpty()) return false
+
+        val isNewFile = targetAsset.isNew
+        val doc = getOutputDocumentFile(create = false, isNewAssets = isNewFile) ?: return false
+
+        val rawRows = mutableListOf<Array<String>>()
+        context.contentResolver.openInputStream(doc.uri)?.use { stream ->
+            CSVReader(InputStreamReader(stream)).use { reader ->
+                var line: Array<String>?
+                while (reader.readNext().also { line = it } != null) {
+                    line?.let { rawRows.add(it) }
+                }
+            }
+        }
+        if (rawRows.size <= 1) return false
+
+        val tsCol = if (isNewFile) 5 else 2
+        val matchIdx = findAssetRowIndex(rawRows, targetNum, targetAsset.timestamp, tsCol)
+        if (matchIdx == -1) return false
+
+        rawRows.removeAt(matchIdx)
+
+        context.contentResolver.openOutputStream(doc.uri, "wt")?.use { os ->
+            CSVWriter(OutputStreamWriter(os)).use { writer ->
+                rawRows.forEach { writer.writeNext(it) }
+            }
+        }
+        return true
     }
 
     fun isAlreadyLogged(assetNumber: String): Boolean =
