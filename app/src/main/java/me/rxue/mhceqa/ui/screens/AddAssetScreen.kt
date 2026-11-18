@@ -52,11 +52,14 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.rxue.mhceqa.BarcodeHelper
 import me.rxue.mhceqa.ui.components.CONDITION_SCORE_DESCRIPTIONS
+import me.rxue.mhceqa.ui.components.cleanSingleLineTextFieldValue
 import me.rxue.mhceqa.ui.components.getConditionScoreDescription
+import me.rxue.mhceqa.ui.components.textFieldValueAtEnd
 import me.rxue.mhceqa.ui.theme.PrimaryBlue
 import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
@@ -81,14 +84,14 @@ fun AddAssetScreen(
     onSave: (assetNum: String, dept: String, make: String, model: String, serial: String, conditionScore: String, note: String) -> Unit,
     onCancel: () -> Unit
 ) {
-    var editableAssetNumber by remember(assetNumber) { mutableStateOf(assetNumber) }
+    var editableAssetNumber by remember(assetNumber) { mutableStateOf(textFieldValueAtEnd(assetNumber)) }
     var assetNumberError by remember { mutableStateOf<String?>(null) }
-    var department by remember { mutableStateOf("") }
-    var make by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf("") }
-    var serial by remember(initialSerial) { mutableStateOf(initialSerial) }
+    var department by remember { mutableStateOf(TextFieldValue("")) }
+    var make by remember { mutableStateOf(TextFieldValue("")) }
+    var model by remember { mutableStateOf(TextFieldValue("")) }
+    var serial by remember(initialSerial) { mutableStateOf(textFieldValueAtEnd(initialSerial)) }
     var conditionScore by remember { mutableStateOf("+1") }
-    var note by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf(TextFieldValue("")) }
 
     var activeField by remember { mutableStateOf(AddAssetTargetField.SERIAL) }
     var lastScannedMsg by remember { mutableStateOf<String?>(null) }
@@ -106,49 +109,52 @@ fun AddAssetScreen(
         val effectiveCode = decoded.code
         when (activeField) {
             AddAssetTargetField.ASSET_NUMBER -> {
-                editableAssetNumber = effectiveCode.uppercase()
+                editableAssetNumber = textFieldValueAtEnd(effectiveCode.uppercase())
                 assetNumberError = null
-                if (serial.isBlank() && !decoded.extractedSerial.isNullOrBlank()) {
-                    serial = decoded.extractedSerial
+                if (serial.text.isBlank() && !decoded.extractedSerial.isNullOrBlank()) {
+                    serial = textFieldValueAtEnd(decoded.extractedSerial)
                 }
             }
-            AddAssetTargetField.DEPARTMENT -> department = effectiveCode.uppercase()
-            AddAssetTargetField.MAKE -> make = effectiveCode
-            AddAssetTargetField.MODEL -> model = effectiveCode
-            AddAssetTargetField.SERIAL -> serial = effectiveCode.uppercase()
-            AddAssetTargetField.NOTE -> note = if (note.isBlank()) effectiveCode else "$note $effectiveCode"
+            AddAssetTargetField.DEPARTMENT -> department = textFieldValueAtEnd(effectiveCode.uppercase())
+            AddAssetTargetField.MAKE -> make = textFieldValueAtEnd(effectiveCode)
+            AddAssetTargetField.MODEL -> model = textFieldValueAtEnd(effectiveCode)
+            AddAssetTargetField.SERIAL -> serial = textFieldValueAtEnd(effectiveCode.uppercase())
+            AddAssetTargetField.NOTE -> {
+                val updatedNote = if (note.text.isBlank()) effectiveCode else "${note.text.trimEnd()} $effectiveCode"
+                note = textFieldValueAtEnd(updatedNote)
+            }
         }
         lastScannedMsg = "Scanned into ${activeField.label}: $effectiveCode"
         onClearBarcode()
     }
 
     fun hasInput() =
-        editableAssetNumber.trim() != assetNumber.trim() ||
-        department.isNotBlank() ||
-        make.isNotBlank() ||
-        model.isNotBlank() ||
-        (serial.isNotBlank() && serial != initialSerial) ||
-        note.isNotBlank()
+        editableAssetNumber.text.trim() != assetNumber.trim() ||
+        department.text.isNotBlank() ||
+        make.text.isNotBlank() ||
+        model.text.isNotBlank() ||
+        (serial.text.isNotBlank() && serial.text != initialSerial) ||
+        note.text.isNotBlank()
 
     BackHandler {
         if (hasInput()) showDiscardDialog = true else onCancel()
     }
 
     fun attemptSave() {
-        val finalAssetNum = editableAssetNumber.trim().uppercase()
+        val finalAssetNum = editableAssetNumber.text.trim().uppercase()
         if (finalAssetNum.isEmpty()) {
             assetNumberError = "Asset Number cannot be empty"
             return
         }
 
         val missing = mutableListOf<String>()
-        if (department.isBlank()) missing.add("Department")
-        if (make.isBlank()) missing.add("Make")
-        if (model.isBlank()) missing.add("Model")
-        if (serial.isBlank()) missing.add("Serial Number")
+        if (department.text.isBlank()) missing.add("Department")
+        if (make.text.isBlank()) missing.add("Make")
+        if (model.text.isBlank()) missing.add("Model")
+        if (serial.text.isBlank()) missing.add("Serial Number")
 
         if (missing.isEmpty()) {
-            onSave(finalAssetNum, department.trim(), make.trim(), model.trim(), serial.trim(), if (isIo) conditionScore else "", note.trim())
+            onSave(finalAssetNum, department.text.trim(), make.text.trim(), model.text.trim(), serial.text.trim(), if (isIo) conditionScore else "", note.text.trim())
         } else {
             missingFieldsToConfirm = missing
         }
@@ -230,7 +236,7 @@ fun AddAssetScreen(
             OutlinedTextField(
                 value = editableAssetNumber,
                 onValueChange = {
-                    editableAssetNumber = it.replace("\n", "").replace("\r", "").uppercase()
+                    editableAssetNumber = cleanSingleLineTextFieldValue(it, uppercase = true)
                     assetNumberError = null
                 },
                 label = {
@@ -246,8 +252,8 @@ fun AddAssetScreen(
                 isError = assetNumberError != null,
                 supportingText = assetNumberError?.let { { Text(it) } },
                 trailingIcon = {
-                    if (editableAssetNumber.isNotEmpty()) {
-                        IconButton(onClick = { editableAssetNumber = "" }) {
+                    if (editableAssetNumber.text.isNotEmpty()) {
+                        IconButton(onClick = { editableAssetNumber = TextFieldValue("") }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear",
@@ -274,7 +280,7 @@ fun AddAssetScreen(
             // Department
             OutlinedTextField(
                 value = department,
-                onValueChange = { department = it.replace("\n", "").replace("\r", "").uppercase() },
+                onValueChange = { department = cleanSingleLineTextFieldValue(it, uppercase = true) },
                 label = { Text("Department", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 singleLine = true,
                 maxLines = 1,
@@ -296,7 +302,7 @@ fun AddAssetScreen(
             // Make
             OutlinedTextField(
                 value = make,
-                onValueChange = { make = it.replace("\n", "").replace("\r", "") },
+                onValueChange = { make = cleanSingleLineTextFieldValue(it) },
                 label = { Text("Make", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 singleLine = true,
                 maxLines = 1,
@@ -315,7 +321,7 @@ fun AddAssetScreen(
             // Model
             OutlinedTextField(
                 value = model,
-                onValueChange = { model = it.replace("\n", "").replace("\r", "") },
+                onValueChange = { model = cleanSingleLineTextFieldValue(it) },
                 label = { Text("Model", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 singleLine = true,
                 maxLines = 1,
@@ -334,14 +340,14 @@ fun AddAssetScreen(
             // Serial Number
             OutlinedTextField(
                 value = serial,
-                onValueChange = { serial = it.replace("\n", "").replace("\r", "").uppercase() },
+                onValueChange = { serial = cleanSingleLineTextFieldValue(it, uppercase = true) },
                 label = { Text("Serial Number", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 placeholder = { Text("Scan barcode or enter S/N", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 singleLine = true,
                 maxLines = 1,
                 trailingIcon = {
-                    if (serial.isNotEmpty()) {
-                        IconButton(onClick = { serial = "" }) {
+                    if (serial.text.isNotEmpty()) {
+                        IconButton(onClick = { serial = TextFieldValue("") }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear",
@@ -369,8 +375,9 @@ fun AddAssetScreen(
             OutlinedTextField(
                 value = note,
                 onValueChange = { newValue ->
-                    if (newValue.contains('\n')) {
-                        note = newValue.replace("\n", " ").replace("\r", "")
+                    if (newValue.text.contains('\n')) {
+                        val cleaned = newValue.text.replace("\n", " ").replace("\r", "")
+                        note = textFieldValueAtEnd(cleaned)
                         keyboardController?.hide()
                         focusManager.clearFocus()
                     } else {
@@ -383,8 +390,8 @@ fun AddAssetScreen(
                 minLines = 2,
                 maxLines = 4,
                 trailingIcon = {
-                    if (note.isNotEmpty()) {
-                        IconButton(onClick = { note = "" }) {
+                    if (note.text.isNotEmpty()) {
+                        IconButton(onClick = { note = TextFieldValue("") }) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear",
@@ -560,13 +567,13 @@ fun AddAssetScreen(
                     onClick = {
                         missingFieldsToConfirm = null
                         onSave(
-                            editableAssetNumber.trim().uppercase(),
-                            department.trim(),
-                            make.trim(),
-                            model.trim(),
-                            serial.trim(),
+                            editableAssetNumber.text.trim().uppercase(),
+                            department.text.trim(),
+                            make.text.trim(),
+                            model.text.trim(),
+                            serial.text.trim(),
                             if (isIo) conditionScore else "",
-                            note.trim()
+                            note.text.trim()
                         )
                     }
                 ) {

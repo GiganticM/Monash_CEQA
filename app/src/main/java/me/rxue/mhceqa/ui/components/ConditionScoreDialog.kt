@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +41,10 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import me.rxue.mhceqa.BarcodeHelper
 import me.rxue.mhceqa.ui.theme.PrimaryBlue
 import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
@@ -68,6 +71,8 @@ fun ConditionScoreDialog(
     assetNumber: String,
     initialScore: String,
     initialNote: String = "",
+    scannedBarcode: String? = null,
+    onClearBarcode: () -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (score: String, note: String) -> Unit
 ) {
@@ -75,7 +80,17 @@ fun ConditionScoreDialog(
         mutableStateOf(initialScore.ifEmpty { "+1" })
     }
     var note by remember(assetNumber, initialNote) {
-        mutableStateOf(initialNote)
+        mutableStateOf(textFieldValueAtEnd(initialNote))
+    }
+
+    LaunchedEffect(scannedBarcode) {
+        val raw = scannedBarcode?.trim() ?: return@LaunchedEffect
+        if (raw.isNotEmpty()) {
+            val effectiveCode = BarcodeHelper.decodeBarcode(raw).code
+            val updated = if (note.text.isBlank()) effectiveCode else "${note.text.trimEnd()} $effectiveCode"
+            note = textFieldValueAtEnd(updated)
+        }
+        onClearBarcode()
     }
     val scoreOptions = listOf("-2", "-1", "0", "+1", "+2")
 
@@ -162,8 +177,9 @@ fun ConditionScoreDialog(
                 OutlinedTextField(
                     value = note,
                     onValueChange = { newValue ->
-                        if (newValue.contains('\n')) {
-                            note = newValue.replace("\n", " ").replace("\r", "")
+                        if (newValue.text.contains('\n')) {
+                            val cleaned = newValue.text.replace("\n", " ").replace("\r", "")
+                            note = textFieldValueAtEnd(cleaned)
                             keyboardController?.hide()
                             focusManager.clearFocus()
                         } else {
@@ -185,8 +201,8 @@ fun ConditionScoreDialog(
                     minLines = 2,
                     maxLines = 3,
                     trailingIcon = {
-                        if (note.isNotEmpty()) {
-                            IconButton(onClick = { note = "" }) {
+                        if (note.text.isNotEmpty()) {
+                            IconButton(onClick = { note = TextFieldValue("") }) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Clear",
@@ -248,7 +264,7 @@ fun ConditionScoreDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(selectedScore, note.trim()) }
+                onClick = { onSave(selectedScore, note.text.trim()) }
             ) {
                 Text("Save Score", color = PrimaryBlue, fontWeight = FontWeight.Bold)
             }

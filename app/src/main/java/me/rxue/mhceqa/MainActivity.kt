@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private val isScanTabActive get() = (selectedTab == 0)
     private var conditionScorePrompt by mutableStateOf<Pair<String, Asset>?>(null)
     private var editingAsset by mutableStateOf<Asset?>(null)
+    private var dialogScannedBarcode by mutableStateOf<String?>(null)
     private var showEndSessionPrompt by mutableStateOf(false)
     private var showAboutPrompt by mutableStateOf(false)
 
@@ -276,8 +277,14 @@ class MainActivity : AppCompatActivity() {
                         assetNumber = assetNumber,
                         initialScore = existing.conditionScore.ifEmpty { "+1" },
                         initialNote = existing.note,
-                        onDismiss = { conditionScorePrompt = null },
+                        scannedBarcode = dialogScannedBarcode,
+                        onClearBarcode = { dialogScannedBarcode = null },
+                        onDismiss = {
+                            dialogScannedBarcode = null
+                            conditionScorePrompt = null
+                        },
                         onSave = { score, note ->
+                            dialogScannedBarcode = null
                             conditionScorePrompt = null
                             saveConditionScore(assetNumber, score, note)
                         }
@@ -288,12 +295,19 @@ class MainActivity : AppCompatActivity() {
                     EditAssetDialog(
                         asset = target,
                         isIoSession = isIoSession,
-                        onDismiss = { editingAsset = null },
+                        scannedBarcode = dialogScannedBarcode,
+                        onClearBarcode = { dialogScannedBarcode = null },
+                        onDismiss = {
+                            dialogScannedBarcode = null
+                            editingAsset = null
+                        },
                         onSave = { updated ->
+                            dialogScannedBarcode = null
                             editingAsset = null
                             updateLoggedAsset(target, updated)
                         },
                         onDelete = { toDelete ->
+                            dialogScannedBarcode = null
                             editingAsset = null
                             deleteLoggedAsset(toDelete)
                         }
@@ -348,7 +362,7 @@ class MainActivity : AppCompatActivity() {
                             packageManager.getPackageInfo(packageName, 0).versionName
                         }
                     } catch (_: Exception) {
-                        "2.2"
+                        "2.2.1"
                     }
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showAboutPrompt = false },
@@ -506,7 +520,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (isEnterKey(event)) {
-            if (event.action == KeyEvent.ACTION_DOWN && isScanTabActive) {
+            if (event.action == KeyEvent.ACTION_DOWN && isScanTabActive && editingAsset == null && conditionScorePrompt == null) {
                 val query = searchInput.trim().uppercase()
                 if (query.isNotEmpty()) {
                     if (lookupMap.isEmpty()) {
@@ -529,6 +543,12 @@ class MainActivity : AppCompatActivity() {
         }
         lastScannedBarcode = barcode
         lastScanTime = now
+
+        // Route hardware scan to open Edit/Condition Score dialog note field (or focused field)
+        if (editingAsset != null || conditionScorePrompt != null) {
+            dialogScannedBarcode = barcode
+            return
+        }
 
         // Automatic search strictly only on SCAN screen without populating the search box
         if (isScanTabActive) {
