@@ -3,6 +3,8 @@ package me.rxue.mhceqa
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.setContent
@@ -63,9 +65,21 @@ class SessionActivity : AppCompatActivity() {
             return
         }
 
+        val appVersion = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0)).versionName ?: ""
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+            }
+        } catch (_: Exception) {
+            ""
+        }
+
         setContent {
             MonashCeqaTheme {
                 SessionScreen(
+                    appVersion = appVersion,
                     onStartSession = { initials, location, sessionType ->
                         startSession(initials, location, sessionType)
                     },

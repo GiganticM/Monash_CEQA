@@ -59,6 +59,7 @@ import me.rxue.mhceqa.ui.theme.TextSubtle
 
 @Composable
 fun SessionScreen(
+    appVersion: String = "",
     onStartSession: (initials: String, location: String, sessionType: String) -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -123,9 +124,19 @@ fun SessionScreen(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF221C58),
-                letterSpacing = 2.sp,
-                modifier = Modifier.padding(bottom = 18.dp)
+                letterSpacing = 2.sp
             )
+
+            if (appVersion.isNotBlank()) {
+                Text(
+                    text = "v$appVersion",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSubtle,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(18.dp))
+            }
 
             // Elevated Login Card
             Surface(
