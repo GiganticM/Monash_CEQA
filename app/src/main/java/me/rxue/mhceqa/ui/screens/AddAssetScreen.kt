@@ -29,6 +29,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -45,10 +46,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -58,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import me.rxue.mhceqa.BarcodeHelper
 import me.rxue.mhceqa.ui.components.CONDITION_SCORE_DESCRIPTIONS
 import me.rxue.mhceqa.ui.components.cleanSingleLineTextFieldValue
+import me.rxue.mhceqa.ui.components.dismissSoftKeyboard
 import me.rxue.mhceqa.ui.components.getConditionScoreDescription
 import me.rxue.mhceqa.ui.components.textFieldValueAtEnd
 import me.rxue.mhceqa.ui.theme.PrimaryBlue
@@ -78,29 +88,47 @@ enum class AddAssetTargetField(val label: String) {
 fun AddAssetScreen(
     assetNumber: String,
     initialSerial: String = "",
+    initialDepartment: String = "",
+    initialMake: String = "",
+    initialModel: String = "",
+    initialConditionScore: String = "+1",
+    initialNote: String = "",
+    isEditMode: Boolean = false,
     isIo: Boolean = false,
     scannedBarcode: String? = null,
     onClearBarcode: () -> Unit = {},
     onSave: (assetNum: String, dept: String, make: String, model: String, serial: String, conditionScore: String, note: String) -> Unit,
+    onDelete: (() -> Unit)? = null,
     onCancel: () -> Unit
 ) {
     var editableAssetNumber by remember(assetNumber) { mutableStateOf(textFieldValueAtEnd(assetNumber)) }
     var assetNumberError by remember { mutableStateOf<String?>(null) }
-    var department by remember { mutableStateOf(TextFieldValue("")) }
-    var make by remember { mutableStateOf(TextFieldValue("")) }
-    var model by remember { mutableStateOf(TextFieldValue("")) }
+    var department by remember(initialDepartment) { mutableStateOf(textFieldValueAtEnd(initialDepartment)) }
+    var make by remember(initialMake) { mutableStateOf(textFieldValueAtEnd(initialMake)) }
+    var model by remember(initialModel) { mutableStateOf(textFieldValueAtEnd(initialModel)) }
     var serial by remember(initialSerial) { mutableStateOf(textFieldValueAtEnd(initialSerial)) }
-    var conditionScore by remember { mutableStateOf("+1") }
-    var note by remember { mutableStateOf(TextFieldValue("")) }
+    var conditionScore by remember(initialConditionScore) { mutableStateOf(initialConditionScore.ifEmpty { "+1" }) }
+    var note by remember(initialNote) { mutableStateOf(textFieldValueAtEnd(initialNote)) }
 
-    var activeField by remember { mutableStateOf(AddAssetTargetField.SERIAL) }
+    var activeField by remember(isEditMode) {
+        mutableStateOf(if (isEditMode) AddAssetTargetField.NOTE else AddAssetTargetField.SERIAL)
+    }
     var lastScannedMsg by remember { mutableStateOf<String?>(null) }
 
     var showDiscardDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var missingFieldsToConfirm by remember { mutableStateOf<List<String>?>(null) }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val hideKeyboard = { dismissSoftKeyboard(view, focusManager, keyboardController) }
+
+    val deptFocus = remember { FocusRequester() }
+    val makeFocus = remember { FocusRequester() }
+    val modelFocus = remember { FocusRequester() }
+    val serialFocus = remember { FocusRequester() }
+    val noteFocus = remember { FocusRequester() }
 
     // When hardware scanner broadcast arrives, fill the active target field (defaults to SERIAL)
     LaunchedEffect(scannedBarcode) {
@@ -130,11 +158,12 @@ fun AddAssetScreen(
 
     fun hasInput() =
         editableAssetNumber.text.trim() != assetNumber.trim() ||
-        department.text.isNotBlank() ||
-        make.text.isNotBlank() ||
-        model.text.isNotBlank() ||
-        (serial.text.isNotBlank() && serial.text != initialSerial) ||
-        note.text.isNotBlank()
+        department.text.trim() != initialDepartment.trim() ||
+        make.text.trim() != initialMake.trim() ||
+        model.text.trim() != initialModel.trim() ||
+        serial.text.trim() != initialSerial.trim() ||
+        (isIo && conditionScore != initialConditionScore.ifEmpty { "+1" }) ||
+        note.text.trim() != initialNote.trim()
 
     BackHandler {
         if (hasInput()) showDiscardDialog = true else onCancel()
@@ -153,7 +182,7 @@ fun AddAssetScreen(
         if (model.text.isBlank()) missing.add("Model")
         if (serial.text.isBlank()) missing.add("Serial Number")
 
-        if (missing.isEmpty()) {
+        if (isEditMode || missing.isEmpty()) {
             onSave(finalAssetNum, department.text.trim(), make.text.trim(), model.text.trim(), serial.text.trim(), if (isIo) conditionScore else "", note.text.trim())
         } else {
             missingFieldsToConfirm = missing
@@ -163,7 +192,13 @@ fun AddAssetScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add New Asset", fontWeight = FontWeight.Bold, color = Color.White) },
+                title = {
+                    Text(
+                        text = if (isEditMode) "Edit New Asset" else "Add New Asset",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                },
                 navigationIcon = {
                     IconButton(
                         onClick = {
@@ -191,7 +226,10 @@ fun AddAssetScreen(
                 .padding(16.dp)
         ) {
             Text(
-                text = "Not found in database. Hardware scanner will populate the focused field (defaults to S/N).",
+                text = if (isEditMode)
+                    "Edit asset details below. Hardware scanner will populate the focused field (defaults to Note)."
+                else
+                    "Not found in database. Hardware scanner will populate the focused field (defaults to S/N).",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSubtle
             )
@@ -266,6 +304,9 @@ fun AddAssetScreen(
                     capitalization = KeyboardCapitalization.Characters,
                     imeAction = ImeAction.Next
                 ),
+                keyboardActions = KeyboardActions(
+                    onNext = { deptFocus.requestFocus() }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue
@@ -284,9 +325,23 @@ fun AddAssetScreen(
                 label = { Text("Department", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
                 singleLine = true,
                 maxLines = 1,
+                trailingIcon = {
+                    if (department.text.isNotEmpty()) {
+                        IconButton(onClick = { department = TextFieldValue("") }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = Color.Gray
+                            )
+                        }
+                    }
+                },
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Characters,
                     imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { makeFocus.requestFocus() }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
@@ -294,6 +349,7 @@ fun AddAssetScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(deptFocus)
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.DEPARTMENT }
             )
 
@@ -307,12 +363,16 @@ fun AddAssetScreen(
                 singleLine = true,
                 maxLines = 1,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { modelFocus.requestFocus() }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(makeFocus)
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.MAKE }
             )
 
@@ -326,12 +386,16 @@ fun AddAssetScreen(
                 singleLine = true,
                 maxLines = 1,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions = KeyboardActions(
+                    onNext = { serialFocus.requestFocus() }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(modelFocus)
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.MODEL }
             )
 
@@ -360,12 +424,16 @@ fun AddAssetScreen(
                     capitalization = KeyboardCapitalization.Characters,
                     imeAction = ImeAction.Next
                 ),
+                keyboardActions = KeyboardActions(
+                    onNext = { noteFocus.requestFocus() }
+                ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
                     focusedLabelColor = PrimaryBlue
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(serialFocus)
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.SERIAL }
             )
 
@@ -378,8 +446,7 @@ fun AddAssetScreen(
                     if (newValue.text.contains('\n')) {
                         val cleaned = newValue.text.replace("\n", " ").replace("\r", "")
                         note = textFieldValueAtEnd(cleaned)
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
+                        hideKeyboard()
                     } else {
                         note = newValue
                     }
@@ -405,10 +472,7 @@ fun AddAssetScreen(
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
-                    onDone = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus()
-                    }
+                    onDone = { hideKeyboard() }
                 ),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PrimaryBlue,
@@ -416,7 +480,17 @@ fun AddAssetScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(noteFocus)
                     .onFocusChanged { if (it.isFocused) activeField = AddAssetTargetField.NOTE }
+                    .onPreviewKeyEvent { keyEvent ->
+                        val isEnter = keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter
+                        if (isEnter && keyEvent.type == KeyEventType.KeyDown) {
+                            hideKeyboard()
+                            true
+                        } else {
+                            false
+                        }
+                    }
             )
 
             if (isIo) {
@@ -528,16 +602,71 @@ fun AddAssetScreen(
                     contentColor = Color.White
                 )
             ) {
-                Text("Save Asset", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = if (isEditMode) "Save Changes" else "Save Asset",
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+
+            if (isEditMode && onDelete != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { showDeleteConfirmDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete Record", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
+    }
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Asset Record?", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete '${editableAssetNumber.text.trim().ifEmpty { assetNumber }}' from today's log and CSV file?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDelete?.invoke()
+                    }
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
-            title = { Text("Discard New Asset?") },
-            text = { Text("You haven't finished adding this new asset.\nAre you sure you want to go back without saving?") },
+            title = { Text(if (isEditMode) "Discard Changes?" else "Discard New Asset?") },
+            text = {
+                Text(
+                    if (isEditMode)
+                        "You have unsaved changes for this asset.\nAre you sure you want to go back without saving?"
+                    else
+                        "You haven't finished adding this new asset.\nAre you sure you want to go back without saving?"
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { showDiscardDialog = false; onCancel() }) {
                     Text("Discard", color = MaterialTheme.colorScheme.error)

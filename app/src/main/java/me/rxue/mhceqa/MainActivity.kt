@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
     private val isScanTabActive get() = (selectedTab == 0)
     private var conditionScorePrompt by mutableStateOf<Pair<String, Asset>?>(null)
     private var editingAsset by mutableStateOf<Asset?>(null)
+    private var pendingEditNewAsset by mutableStateOf<Asset?>(null)
     private var dialogScannedBarcode by mutableStateOf<String?>(null)
     private var showEndSessionPrompt by mutableStateOf(false)
     private var showAboutPrompt by mutableStateOf(false)
@@ -194,6 +195,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val editNewAssetLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val data = result.data ?: return@registerForActivityResult
+            val origNum = data.getStringExtra(AddAssetActivity.EXTRA_ORIGINAL_ASSET_NUMBER) ?: ""
+            val origTs = data.getStringExtra(AddAssetActivity.EXTRA_ORIGINAL_TIMESTAMP) ?: ""
+            val originalAsset = pendingEditNewAsset ?: scanLog.firstOrNull {
+                !it.isSessionHeader && it.isNew &&
+                    it.assetNumber.equals(origNum, ignoreCase = true) &&
+                    (origTs.isBlank() || it.timestamp == origTs)
+            }
+            pendingEditNewAsset = null
+            if (originalAsset != null) {
+                if (data.getBooleanExtra(AddAssetActivity.EXTRA_ACTION_DELETE, false)) {
+                    deleteLoggedAsset(originalAsset)
+                } else {
+                    val updatedAsset = originalAsset.copy(
+                        assetNumber    = data.getStringExtra(AddAssetActivity.EXTRA_ASSET_NUMBER) ?: originalAsset.assetNumber,
+                        department     = data.getStringExtra(AddAssetActivity.EXTRA_DEPARTMENT) ?: "",
+                        make           = data.getStringExtra(AddAssetActivity.EXTRA_MAKE) ?: "",
+                        model          = data.getStringExtra(AddAssetActivity.EXTRA_MODEL) ?: "",
+                        serial         = data.getStringExtra(AddAssetActivity.EXTRA_SERIAL) ?: "",
+                        conditionScore = data.getStringExtra(AddAssetActivity.EXTRA_CONDITION_SCORE) ?: originalAsset.conditionScore,
+                        note           = data.getStringExtra(AddAssetActivity.EXTRA_NOTE) ?: ""
+                    )
+                    updateLoggedAsset(originalAsset, updatedAsset)
+                }
+            }
+        } else {
+            pendingEditNewAsset = null
+        }
+    }
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -255,7 +290,25 @@ class MainActivity : AppCompatActivity() {
                         performSearch(query)
                     },
                     onEditAsset = { asset ->
-                        editingAsset = asset
+                        if (asset.isNew) {
+                            pendingEditNewAsset = asset
+                            val intent = Intent(this, AddAssetActivity::class.java).apply {
+                                putExtra(AddAssetActivity.EXTRA_IS_EDIT_MODE, true)
+                                putExtra(AddAssetActivity.EXTRA_IS_IO, isIoSession)
+                                putExtra(AddAssetActivity.EXTRA_ASSET_NUMBER, asset.assetNumber)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_DEPARTMENT, asset.department)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_MAKE, asset.make)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_MODEL, asset.model)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_SERIAL, asset.serial)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_CONDITION_SCORE, asset.conditionScore)
+                                putExtra(AddAssetActivity.EXTRA_INITIAL_NOTE, asset.note)
+                                putExtra(AddAssetActivity.EXTRA_ORIGINAL_ASSET_NUMBER, asset.assetNumber)
+                                putExtra(AddAssetActivity.EXTRA_ORIGINAL_TIMESTAMP, asset.timestamp)
+                            }
+                            editNewAssetLauncher.launch(intent)
+                        } else {
+                            editingAsset = asset
+                        }
                     },
                     onConnectBt = { checkPermissionsAndShowPicker() },
                     onDisconnectBt = { disconnectBluetooth() },
@@ -672,6 +725,9 @@ class MainActivity : AppCompatActivity() {
                         putExtra(AddAssetActivity.EXTRA_ASSET_NUMBER, query)
                         if (!decoded.extractedSerial.isNullOrBlank()) {
                             putExtra(AddAssetActivity.EXTRA_INITIAL_SERIAL, decoded.extractedSerial)
+                        }
+                        if (userLocation.isNotBlank()) {
+                            putExtra(AddAssetActivity.EXTRA_INITIAL_DEPARTMENT, userLocation.trim().uppercase())
                         }
                         putExtra(AddAssetActivity.EXTRA_IS_IO, isIoSession)
                     }

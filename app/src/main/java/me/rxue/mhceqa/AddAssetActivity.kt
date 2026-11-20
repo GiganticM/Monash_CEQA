@@ -25,6 +25,15 @@ class AddAssetActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_ASSET_NUMBER = "extra_asset_number"
         const val EXTRA_INITIAL_SERIAL = "extra_initial_serial"
+        const val EXTRA_INITIAL_DEPARTMENT = "extra_initial_department"
+        const val EXTRA_INITIAL_MAKE = "extra_initial_make"
+        const val EXTRA_INITIAL_MODEL = "extra_initial_model"
+        const val EXTRA_INITIAL_CONDITION_SCORE = "extra_initial_condition_score"
+        const val EXTRA_INITIAL_NOTE = "extra_initial_note"
+        const val EXTRA_IS_EDIT_MODE = "extra_is_edit_mode"
+        const val EXTRA_ORIGINAL_ASSET_NUMBER = "extra_original_asset_number"
+        const val EXTRA_ORIGINAL_TIMESTAMP = "extra_original_timestamp"
+        const val EXTRA_ACTION_DELETE = "extra_action_delete"
         const val EXTRA_DEPARTMENT   = "extra_department"
         const val EXTRA_MAKE         = "extra_make"
         const val EXTRA_MODEL        = "extra_model"
@@ -47,8 +56,16 @@ class AddAssetActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val isEditMode = intent.getBooleanExtra(EXTRA_IS_EDIT_MODE, false)
         val assetNumber = intent.getStringExtra(EXTRA_ASSET_NUMBER) ?: ""
         val initialSerial = intent.getStringExtra(EXTRA_INITIAL_SERIAL) ?: ""
+        val initialDepartment = intent.getStringExtra(EXTRA_INITIAL_DEPARTMENT) ?: ""
+        val initialMake = intent.getStringExtra(EXTRA_INITIAL_MAKE) ?: ""
+        val initialModel = intent.getStringExtra(EXTRA_INITIAL_MODEL) ?: ""
+        val initialConditionScore = intent.getStringExtra(EXTRA_INITIAL_CONDITION_SCORE)?.ifEmpty { "+1" } ?: "+1"
+        val initialNote = intent.getStringExtra(EXTRA_INITIAL_NOTE) ?: ""
+        val originalAssetNumber = intent.getStringExtra(EXTRA_ORIGINAL_ASSET_NUMBER) ?: assetNumber
+        val originalTimestamp = intent.getStringExtra(EXTRA_ORIGINAL_TIMESTAMP) ?: ""
         val isIo = intent.getBooleanExtra(EXTRA_IS_IO, false)
 
         setContent {
@@ -56,6 +73,12 @@ class AddAssetActivity : AppCompatActivity() {
                 AddAssetScreen(
                     assetNumber = assetNumber,
                     initialSerial = initialSerial,
+                    initialDepartment = initialDepartment,
+                    initialMake = initialMake,
+                    initialModel = initialModel,
+                    initialConditionScore = initialConditionScore,
+                    initialNote = initialNote,
+                    isEditMode = isEditMode,
                     isIo = isIo,
                     scannedBarcode = latestBarcodeState.value,
                     onClearBarcode = { latestBarcodeState.value = null },
@@ -68,10 +91,25 @@ class AddAssetActivity : AppCompatActivity() {
                             putExtra(EXTRA_SERIAL, serial)
                             putExtra(EXTRA_CONDITION_SCORE, conditionScore)
                             putExtra(EXTRA_NOTE, note)
+                            if (isEditMode) {
+                                putExtra(EXTRA_ORIGINAL_ASSET_NUMBER, originalAssetNumber)
+                                putExtra(EXTRA_ORIGINAL_TIMESTAMP, originalTimestamp)
+                            }
                         }
                         setResult(Activity.RESULT_OK, resultIntent)
                         finish()
                     },
+                    onDelete = if (isEditMode) {
+                        {
+                            val resultIntent = Intent().apply {
+                                putExtra(EXTRA_ACTION_DELETE, true)
+                                putExtra(EXTRA_ORIGINAL_ASSET_NUMBER, originalAssetNumber)
+                                putExtra(EXTRA_ORIGINAL_TIMESTAMP, originalTimestamp)
+                            }
+                            setResult(Activity.RESULT_OK, resultIntent)
+                            finish()
+                        }
+                    } else null,
                     onCancel = {
                         setResult(Activity.RESULT_CANCELED)
                         finish()

@@ -36,8 +36,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -96,6 +102,8 @@ fun ConditionScoreDialog(
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val hideKeyboard = { dismissSoftKeyboard(view, focusManager, keyboardController) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -180,8 +188,7 @@ fun ConditionScoreDialog(
                         if (newValue.text.contains('\n')) {
                             val cleaned = newValue.text.replace("\n", " ").replace("\r", "")
                             note = textFieldValueAtEnd(cleaned)
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
+                            hideKeyboard()
                         } else {
                             note = newValue
                         }
@@ -216,16 +223,23 @@ fun ConditionScoreDialog(
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                        }
+                        onDone = { hideKeyboard() }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PrimaryBlue,
                         focusedLabelColor = PrimaryBlue
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onPreviewKeyEvent { keyEvent ->
+                            val isEnter = keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter
+                            if (isEnter && keyEvent.type == KeyEventType.KeyDown) {
+                                hideKeyboard()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))

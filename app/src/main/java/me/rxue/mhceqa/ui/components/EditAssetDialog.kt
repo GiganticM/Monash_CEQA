@@ -1,5 +1,8 @@
 package me.rxue.mhceqa.ui.components
 
+import android.content.Context
+import android.view.View
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,10 +39,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,10 +63,6 @@ import me.rxue.mhceqa.ui.theme.PrimaryBlue
 import me.rxue.mhceqa.ui.theme.TextDark
 import me.rxue.mhceqa.ui.theme.TextSubtle
 
-private enum class EditAssetTargetField {
-    ASSET_NUMBER, DEPARTMENT, MAKE, MODEL, SERIAL, NOTE
-}
-
 internal fun textFieldValueAtEnd(text: String): TextFieldValue =
     TextFieldValue(text = text, selection = TextRange(text.length))
 
@@ -66,6 +72,18 @@ internal fun cleanSingleLineTextFieldValue(value: TextFieldValue, uppercase: Boo
     val start = value.selection.start.coerceIn(0, finalText.length)
     val end = value.selection.end.coerceIn(0, finalText.length)
     return value.copy(text = finalText, selection = TextRange(start, end))
+}
+
+internal fun dismissSoftKeyboard(
+    view: View,
+    focusManager: FocusManager,
+    keyboardController: SoftwareKeyboardController?
+) {
+    keyboardController?.hide()
+    focusManager.clearFocus(force = true)
+    val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+    imm?.hideSoftInputFromWindow(view.windowToken, 0)
+    imm?.hideSoftInputFromWindow(view.rootView.windowToken, 0)
 }
 
 @Composable
@@ -78,41 +96,16 @@ fun EditAssetDialog(
     onSave: (Asset) -> Unit,
     onDelete: (Asset) -> Unit
 ) {
-    var assetNumber by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.assetNumber)) }
-    var assetNumberError by remember { mutableStateOf<String?>(null) }
-    var department by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.department)) }
-    var make by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.make)) }
-    var model by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.model)) }
-    var serial by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.serial)) }
     var selectedScore by remember(asset) { mutableStateOf(asset.conditionScore.ifEmpty { "+1" }) }
     var note by remember(asset) { mutableStateOf(textFieldValueAtEnd(asset.note)) }
-    var activeField by remember { mutableStateOf(EditAssetTargetField.NOTE) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(scannedBarcode) {
         val raw = scannedBarcode?.trim() ?: return@LaunchedEffect
         if (raw.isNotEmpty()) {
-            val decoded = BarcodeHelper.decodeBarcode(raw)
-            val effectiveCode = decoded.code
-            if (!asset.isNew) {
-                val updatedNote = if (note.text.isBlank()) effectiveCode else "${note.text.trimEnd()} $effectiveCode"
-                note = textFieldValueAtEnd(updatedNote)
-            } else {
-                when (activeField) {
-                    EditAssetTargetField.ASSET_NUMBER -> {
-                        assetNumber = textFieldValueAtEnd(effectiveCode.uppercase())
-                        assetNumberError = null
-                    }
-                    EditAssetTargetField.DEPARTMENT -> department = textFieldValueAtEnd(effectiveCode.uppercase())
-                    EditAssetTargetField.MAKE -> make = textFieldValueAtEnd(effectiveCode)
-                    EditAssetTargetField.MODEL -> model = textFieldValueAtEnd(effectiveCode)
-                    EditAssetTargetField.SERIAL -> serial = textFieldValueAtEnd(effectiveCode.uppercase())
-                    EditAssetTargetField.NOTE -> {
-                        val updatedNote = if (note.text.isBlank()) effectiveCode else "${note.text.trimEnd()} $effectiveCode"
-                        note = textFieldValueAtEnd(updatedNote)
-                    }
-                }
-            }
+            val effectiveCode = BarcodeHelper.decodeBarcode(raw).code
+            val updatedNote = if (note.text.isBlank()) effectiveCode else "${note.text.trimEnd()} $effectiveCode"
+            note = textFieldValueAtEnd(updatedNote)
         }
         onClearBarcode()
     }
@@ -120,6 +113,8 @@ fun EditAssetDialog(
     val scoreOptions = listOf("-2", "-1", "0", "+1", "+2")
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val hideKeyboard = { dismissSoftKeyboard(view, focusManager, keyboardController) }
 
     if (showDeleteConfirm) {
         AlertDialog(
@@ -159,7 +154,7 @@ fun EditAssetDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (asset.isNew) "Edit New Asset" else "Edit Asset Record",
+                text = "Edit Asset Record",
                 fontWeight = FontWeight.Bold
             )
         },
@@ -169,129 +164,21 @@ fun EditAssetDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                if (asset.isNew) {
-                    // Full editable fields for NEW assets
-                    OutlinedTextField(
-                        value = assetNumber,
-                        onValueChange = {
-                            assetNumber = cleanSingleLineTextFieldValue(it, uppercase = true)
-                            assetNumberError = null
-                        },
-                        label = { Text("Asset Number", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        singleLine = true,
-                        maxLines = 1,
-                        isError = assetNumberError != null,
-                        supportingText = assetNumberError?.let { { Text(it) } },
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters,
-                            imeAction = ImeAction.Next
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            focusedLabelColor = PrimaryBlue
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.ASSET_NUMBER }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = department,
-                        onValueChange = { department = cleanSingleLineTextFieldValue(it, uppercase = true) },
-                        label = { Text("Department", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        singleLine = true,
-                        maxLines = 1,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters,
-                            imeAction = ImeAction.Next
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            focusedLabelColor = PrimaryBlue
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.DEPARTMENT }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = make,
-                        onValueChange = { make = cleanSingleLineTextFieldValue(it) },
-                        label = { Text("Make", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        singleLine = true,
-                        maxLines = 1,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            focusedLabelColor = PrimaryBlue
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.MAKE }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = model,
-                        onValueChange = { model = cleanSingleLineTextFieldValue(it) },
-                        label = { Text("Model", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        singleLine = true,
-                        maxLines = 1,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            focusedLabelColor = PrimaryBlue
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.MODEL }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = serial,
-                        onValueChange = { serial = cleanSingleLineTextFieldValue(it, uppercase = true) },
-                        label = { Text("Serial Number", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
-                        singleLine = true,
-                        maxLines = 1,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters,
-                            imeAction = ImeAction.Next
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryBlue,
-                            focusedLabelColor = PrimaryBlue
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.SERIAL }
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                } else {
-                    // Header info for FOUND assets
+                Text(
+                    text = "Asset: ${asset.assetNumber}",
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextDark
+                )
+                if (asset.department.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Asset: ${asset.assetNumber}",
-                        fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextDark
+                        text = "Department: ${asset.department}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSubtle
                     )
-                    if (asset.department.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Department: ${asset.department}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSubtle
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
                 }
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Condition Score selector (IO session only)
                 if (isIoSession) {
@@ -357,8 +244,7 @@ fun EditAssetDialog(
                         if (newValue.text.contains('\n')) {
                             val cleaned = newValue.text.replace("\n", " ").replace("\r", "")
                             note = textFieldValueAtEnd(cleaned)
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
+                            hideKeyboard()
                         } else {
                             note = newValue
                         }
@@ -391,10 +277,7 @@ fun EditAssetDialog(
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
-                        onDone = {
-                            keyboardController?.hide()
-                            focusManager.clearFocus()
-                        }
+                        onDone = { hideKeyboard() }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PrimaryBlue,
@@ -402,11 +285,19 @@ fun EditAssetDialog(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onFocusChanged { if (it.isFocused) activeField = EditAssetTargetField.NOTE }
+                        .onPreviewKeyEvent { keyEvent ->
+                            val isEnter = keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter
+                            if (isEnter && keyEvent.type == KeyEventType.KeyDown) {
+                                hideKeyboard()
+                                true
+                            } else {
+                                false
+                            }
+                        }
                 )
 
-                // Breakdown list for FOUND IO assets (matching ConditionScoreDialog convenience)
-                if (isIoSession && !asset.isNew) {
+                // Breakdown list for FOUND IO assets
+                if (isIoSession) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(
                         modifier = Modifier
@@ -466,31 +357,12 @@ fun EditAssetDialog(
                     }
                     TextButton(
                         onClick = {
-                            if (asset.isNew) {
-                                val trimmedAsset = assetNumber.text.trim().uppercase()
-                                if (trimmedAsset.isEmpty()) {
-                                    assetNumberError = "Asset Number cannot be empty"
-                                    return@TextButton
-                                }
-                                onSave(
-                                    asset.copy(
-                                        assetNumber = trimmedAsset,
-                                        department = department.text.trim().uppercase(),
-                                        make = make.text.trim(),
-                                        model = model.text.trim(),
-                                        serial = serial.text.trim().uppercase(),
-                                        conditionScore = if (isIoSession) selectedScore else asset.conditionScore,
-                                        note = note.text.trim()
-                                    )
+                            onSave(
+                                asset.copy(
+                                    conditionScore = if (isIoSession) selectedScore else asset.conditionScore,
+                                    note = note.text.trim()
                                 )
-                            } else {
-                                onSave(
-                                    asset.copy(
-                                        conditionScore = if (isIoSession) selectedScore else asset.conditionScore,
-                                        note = note.text.trim()
-                                    )
-                                )
-                            }
+                            )
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                     ) {
